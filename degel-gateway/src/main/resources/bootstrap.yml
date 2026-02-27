@@ -1,0 +1,34 @@
+server:
+  port: 9999
+
+spring:
+  application:
+    name: degel-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    gateway:
+      routes:
+        - id: auth-route
+          uri: lb://degel-auth
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=1
+        - id: admin-route
+          uri: lb://degel-admin
+          predicates:
+            - Path=/admin/**
+          filters:
+            - StripPrefix=1
+  redis:
+    host: localhost
+    port: 6379
+
+degel:
+  security:
+    jwt-secret: degel-jwt-secret-key-2024-platform-admin
+    ignore-urls:
+      - /auth/oauth/token
+      - /auth/oauth/check_token

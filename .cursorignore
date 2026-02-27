@@ -1,0 +1,9 @@
+# Maven build output
+**/target/
+
+# Maven wrapper binary
+.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+*.log
+**/logs/
