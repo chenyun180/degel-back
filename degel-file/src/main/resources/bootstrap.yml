@@ -1,0 +1,21 @@
+server:
+  port: 9202
+
+spring:
+  application:
+    name: degel-file
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  public-bucket: degel-public
+  private-bucket: degel-private

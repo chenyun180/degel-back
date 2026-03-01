@@ -5,8 +5,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.admin.entity.SysShop;
 import com.degel.admin.service.ISysShopService;
 import com.degel.common.core.R;
+import com.degel.common.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/shop")
@@ -29,9 +32,9 @@ public class SysShopController {
     }
 
     @PostMapping
-    public R<Void> create(@RequestBody SysShop shop) {
-        shopService.createShop(shop);
-        return R.ok();
+    public R<Map<String, String>> create(@RequestBody SysShop shop) {
+        Map<String, String> account = shopService.createShop(shop);
+        return R.ok(account);
     }
 
     @PutMapping
@@ -43,6 +46,32 @@ public class SysShopController {
     @PutMapping("/status")
     public R<Void> toggleStatus(@RequestParam Long id, @RequestParam Integer status) {
         shopService.toggleStatus(id, status);
+        return R.ok();
+    }
+
+    @GetMapping("/mine")
+    public R<SysShop> getMine(@RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        if (shopId == 0) {
+            throw new BusinessException("平台账号无店铺信息");
+        }
+        return R.ok(shopService.getById(shopId));
+    }
+
+    @PutMapping("/mine")
+    public R<Void> updateMine(@RequestBody SysShop shop,
+                              @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        if (shopId == 0) {
+            throw new BusinessException("平台账号无店铺信息");
+        }
+        SysShop update = new SysShop();
+        update.setId(shopId);
+        update.setShopName(shop.getShopName());
+        update.setLogo(shop.getLogo());
+        update.setAnnouncement(shop.getAnnouncement());
+        update.setDescription(shop.getDescription());
+        update.setContactName(shop.getContactName());
+        update.setContactPhone(shop.getContactPhone());
+        shopService.updateById(update);
         return R.ok();
     }
 }

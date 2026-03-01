@@ -22,6 +22,9 @@
         <module>degel-gateway</module>
         <module>degel-auth</module>
         <module>degel-admin</module>
+        <module>degel-file</module>
+        <module>degel-product</module>
+        <module>degel-order</module>
     </modules>
 
     <properties>
@@ -30,9 +33,11 @@
         <spring-cloud.version>2021.0.5</spring-cloud.version>
         <spring-cloud-alibaba.version>2021.0.5.0</spring-cloud-alibaba.version>
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
+        <hutool.version>5.8.26</hutool.version>
         <security-oauth2.version>2.5.2.RELEASE</security-oauth2.version>
         <security-oauth2-autoconfigure.version>2.6.8</security-oauth2-autoconfigure.version>
         <jjwt.version>0.11.5</jjwt.version>
+        <aws-s3.version>2.42.2</aws-s3.version>
     </properties>
 
     <dependencyManagement>
@@ -90,6 +95,18 @@
                 <groupId>com.degel</groupId>
                 <artifactId>degel-common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws-s3.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-all</artifactId>
+                <version>${hutool.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

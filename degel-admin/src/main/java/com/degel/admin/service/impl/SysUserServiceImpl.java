@@ -7,6 +7,7 @@ import com.degel.admin.entity.SysRole;
 import com.degel.admin.entity.SysUser;
 import com.degel.admin.mapper.*;
 import com.degel.admin.service.ISysUserService;
+import com.degel.common.core.Constants;
 import com.degel.common.core.dto.UserInfo;
 import com.degel.common.core.exception.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -88,21 +89,31 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
     }
 
     @Override
-    public IPage<SysUser> pageUsers(IPage<SysUser> page, SysUser query) {
+    public IPage<SysUser> pageUsers(IPage<SysUser> page, SysUser query, Long shopId) {
         LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getDelFlag, 0)
                 .like(StringUtils.hasText(query.getUsername()), SysUser::getUsername, query.getUsername())
                 .like(StringUtils.hasText(query.getNickname()), SysUser::getNickname, query.getNickname())
                 .like(StringUtils.hasText(query.getPhone()), SysUser::getPhone, query.getPhone())
                 .eq(query.getStatus() != null, SysUser::getStatus, query.getStatus())
-                .eq(query.getShopId() != null, SysUser::getShopId, query.getShopId())
                 .orderByDesc(SysUser::getCreateTime);
+
+        if (shopId != null && shopId != 0L) {
+            wrapper.eq(SysUser::getShopId, shopId);
+        } else {
+            wrapper.eq(query.getShopId() != null, SysUser::getShopId, query.getShopId());
+        }
+
         return this.page(page, wrapper);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void createUser(SysUser user, List<Long> roleIds) {
+    public void createUser(SysUser user, List<Long> roleIds, Long shopId) {
+        if (shopId != null && shopId != 0L) {
+            user.setShopId(shopId);
+        }
+
         long count = this.count(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getUsername, user.getUsername())
                 .eq(SysUser::getDelFlag, 0));
@@ -113,14 +124,49 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         this.save(user);
 
         if (roleIds != null && !roleIds.isEmpty()) {
+            validateRoleScope(user.getShopId(), roleIds);
             userRoleMapper.insertBatch(user.getId(), roleIds);
+        }
+    }
+
+    private void validateRoleScope(Long userShopId, List<Long> roleIds) {
+        if (roleIds == null || roleIds.isEmpty()) {
+            return;
+        }
+        List<SysRole> roles = roleMapper.selectBatchIds(roleIds);
+        long expectedShopId = userShopId != null ? userShopId : 0L;
+        for (SysRole role : roles) {
+            long roleShopId = role.getShopId() != null ? role.getShopId() : 0L;
+            if (expectedShopId == 0L) {
+                if (roleShopId != 0L) {
+                    throw new BusinessException("平台用户不能分配店铺角色: " + role.getRoleName());
+                }
+            } else {
+                if (roleShopId != expectedShopId) {
+                    throw new BusinessException("只能分配本店铺的角色: " + role.getRoleName());
+                }
+            }
+        }
+    }
+
+    private void checkShopOwnership(SysUser existing, Long shopId) {
+        if (shopId != null && shopId != 0L) {
+            if (existing == null) {
+                throw new BusinessException("用户不存在");
+            }
+            Long userShopId = existing.getShopId() != null ? existing.getShopId() : 0L;
+            if (!shopId.equals(userShopId)) {
+                throw new BusinessException("无权操作其他店铺的用户");
+            }
         }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateUser(SysUser user, List<Long> roleIds) {
+    public void updateUser(SysUser user, List<Long> roleIds, Long shopId) {
         SysUser existing = this.getById(user.getId());
+        checkShopOwnership(existing, shopId);
+
         user.setPassword(null);
         this.updateById(user);
 
@@ -138,14 +184,34 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void deleteUser(Long userId) {
+    public void deleteUser(Long userId, Long shopId) {
         SysUser existing = this.getById(userId);
+        checkShopOwnership(existing, shopId);
+
         this.removeById(userId);
         userRoleMapper.deleteByUserId(userId);
 
         if (existing != null) {
             redisTemplate.delete(USER_CACHE_PREFIX + existing.getUsername());
         }
+    }
+
+    @Override
+    public String resetPassword(Long userId, Long shopId) {
+        SysUser user = this.getById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        checkShopOwnership(user, shopId);
+
+        String newPassword = Constants.DEFAULT_PASSWORD;
+        SysUser update = new SysUser();
+        update.setId(userId);
+        update.setPassword(passwordEncoder.encode(newPassword));
+        this.updateById(update);
+
+        redisTemplate.delete(USER_CACHE_PREFIX + user.getUsername());
+        return newPassword;
     }
 
     @Override

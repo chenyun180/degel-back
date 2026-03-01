@@ -22,17 +22,19 @@ CREATE TABLE IF NOT EXISTS sys_user (
 
 -- ========== 系统角色表 ==========
 CREATE TABLE IF NOT EXISTS sys_role (
-    id          BIGINT      NOT NULL AUTO_INCREMENT,
-    role_name   VARCHAR(50) NOT NULL,
-    role_key    VARCHAR(50) NOT NULL,
-    sort        INT         DEFAULT 0,
-    status      TINYINT     DEFAULT 0 COMMENT '0=正常 1=停用',
+    id          BIGINT       NOT NULL AUTO_INCREMENT,
+    role_name   VARCHAR(50)  NOT NULL,
+    role_key    VARCHAR(50)  NOT NULL,
+    role_type   VARCHAR(10)  DEFAULT 'platform' COMMENT 'platform=平台角色 shop=店铺角色',
+    shop_id     BIGINT       DEFAULT 0 COMMENT '店铺ID，平台角色为0',
+    sort        INT          DEFAULT 0,
+    status      TINYINT      DEFAULT 0 COMMENT '0=正常 1=停用',
     remark      VARCHAR(255) DEFAULT '',
-    create_time DATETIME    DEFAULT CURRENT_TIMESTAMP,
-    update_time DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    del_flag    TINYINT     DEFAULT 0,
+    create_time DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    del_flag    TINYINT      DEFAULT 0,
     PRIMARY KEY (id),
-    UNIQUE KEY uk_role_key (role_key)
+    UNIQUE KEY uk_role_key_shop (role_key, shop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统角色表';
 
 -- ========== 系统菜单表 ==========
@@ -81,3 +83,9 @@ CREATE TABLE IF NOT EXISTS sys_shop (
     del_flag      TINYINT      DEFAULT 0,
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='店铺表';
+
+-- ========== 店铺表字段补充（迁移，如已存在请跳过） ==========
+ALTER TABLE sys_shop
+  ADD COLUMN logo VARCHAR(500) DEFAULT '' COMMENT '店铺Logo' AFTER shop_name,
+  ADD COLUMN announcement VARCHAR(1000) DEFAULT '' COMMENT '店铺公告' AFTER logo,
+  ADD COLUMN description VARCHAR(500) DEFAULT '' COMMENT '店铺简介' AFTER announcement;

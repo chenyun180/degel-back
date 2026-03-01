@@ -8,15 +8,15 @@ import java.util.List;
 
 public interface ISysRoleService extends IService<SysRole> {
 
-    IPage<SysRole> pageRoles(IPage<SysRole> page, SysRole query);
+    IPage<SysRole> pageRoles(IPage<SysRole> page, SysRole query, Long shopId);
 
-    void createRole(SysRole role);
+    void createRole(SysRole role, Long shopId);
 
-    void updateRole(SysRole role);
+    void updateRole(SysRole role, Long shopId);
 
-    void deleteRole(Long roleId);
+    void deleteRole(Long roleId, Long shopId);
 
-    void assignMenus(Long roleId, List<Long> menuIds);
+    void assignMenus(Long roleId, List<Long> menuIds, Long shopId);
 
     List<Long> getMenuIdsByRoleId(Long roleId);
 }

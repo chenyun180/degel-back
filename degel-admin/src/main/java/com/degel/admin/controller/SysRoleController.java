@@ -24,17 +24,20 @@ public class SysRoleController {
     public R<IPage<SysRole>> list(
             @RequestParam(defaultValue = "1") Integer current,
             @RequestParam(defaultValue = "10") Integer size,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId,
             SysRole query) {
-        return R.ok(roleService.pageRoles(new Page<>(current, size), query));
+        return R.ok(roleService.pageRoles(new Page<>(current, size), query, shopId));
     }
 
-    /** 获取全部角色（下拉框使用） */
     @GetMapping("/all")
-    public R<List<SysRole>> all() {
-        return R.ok(roleService.list(new LambdaQueryWrapper<SysRole>()
+    public R<List<SysRole>> all(
+            @RequestParam(value = "shopId", required = false) Long shopId) {
+        LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<SysRole>()
                 .eq(SysRole::getDelFlag, 0)
                 .eq(SysRole::getStatus, 0)
-                .orderByAsc(SysRole::getSort)));
+                .eq(shopId != null, SysRole::getShopId, shopId)
+                .orderByAsc(SysRole::getSort);
+        return R.ok(roleService.list(wrapper));
     }
 
     @GetMapping("/{id}")
@@ -43,30 +46,37 @@ public class SysRoleController {
     }
 
     @PostMapping
-    public R<Void> create(@RequestBody SysRole role) {
-        roleService.createRole(role);
+    public R<Void> create(
+            @RequestBody SysRole role,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        roleService.createRole(role, shopId);
         return R.ok();
     }
 
     @PutMapping
-    public R<Void> update(@RequestBody SysRole role) {
-        roleService.updateRole(role);
+    public R<Void> update(
+            @RequestBody SysRole role,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        roleService.updateRole(role, shopId);
         return R.ok();
     }
 
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
-        roleService.deleteRole(id);
+    public R<Void> delete(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        roleService.deleteRole(id, shopId);
         return R.ok();
     }
 
     @PutMapping("/assignMenus")
-    public R<Void> assignMenus(@Valid @RequestBody RoleAssignMenuVo vo) {
-        roleService.assignMenus(vo.getRoleId(), vo.getMenuIds());
+    public R<Void> assignMenus(
+            @Valid @RequestBody RoleAssignMenuVo vo,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        roleService.assignMenus(vo.getRoleId(), vo.getMenuIds(), shopId);
         return R.ok();
     }
 
-    /** 获取角色已分配的菜单ID列表 */
     @GetMapping("/menuIds/{roleId}")
     public R<List<Long>> getMenuIds(@PathVariable Long roleId) {
         return R.ok(roleService.getMenuIdsByRoleId(roleId));

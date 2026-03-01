@@ -11,13 +11,15 @@ public interface ISysUserService extends IService<SysUser> {
 
     UserInfo getUserInfoByUsername(String username);
 
-    IPage<SysUser> pageUsers(IPage<SysUser> page, SysUser query);
+    IPage<SysUser> pageUsers(IPage<SysUser> page, SysUser query, Long shopId);
 
-    void createUser(SysUser user, List<Long> roleIds);
+    void createUser(SysUser user, List<Long> roleIds, Long shopId);
 
-    void updateUser(SysUser user, List<Long> roleIds);
+    void updateUser(SysUser user, List<Long> roleIds, Long shopId);
 
-    void deleteUser(Long userId);
+    void deleteUser(Long userId, Long shopId);
 
     List<String> getRoleKeysByUserId(Long userId);
+
+    String resetPassword(Long userId, Long shopId);
 }

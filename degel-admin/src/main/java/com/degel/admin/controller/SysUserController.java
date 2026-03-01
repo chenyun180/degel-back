@@ -57,14 +57,17 @@ public class SysUserController {
     public R<IPage<SysUser>> list(
             @RequestParam(defaultValue = "1") Integer current,
             @RequestParam(defaultValue = "10") Integer size,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId,
             SysUser query) {
-        IPage<SysUser> page = userService.pageUsers(new Page<>(current, size), query);
+        IPage<SysUser> page = userService.pageUsers(new Page<>(current, size), query, shopId);
         page.getRecords().forEach(u -> u.setPassword(null));
         return R.ok(page);
     }
 
     @PostMapping
-    public R<Void> create(@Valid @RequestBody UserCreateVo vo) {
+    public R<Void> create(
+            @Valid @RequestBody UserCreateVo vo,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
         SysUser user = new SysUser();
         user.setUsername(vo.getUsername());
         user.setPassword(vo.getPassword());
@@ -73,12 +76,14 @@ public class SysUserController {
         user.setEmail(vo.getEmail());
         user.setStatus(vo.getStatus() != null ? vo.getStatus() : 0);
         user.setShopId(vo.getShopId() != null ? vo.getShopId() : 0L);
-        userService.createUser(user, vo.getRoleIds());
+        userService.createUser(user, vo.getRoleIds(), shopId);
         return R.ok();
     }
 
     @PutMapping
-    public R<Void> update(@Valid @RequestBody UserUpdateVo vo) {
+    public R<Void> update(
+            @Valid @RequestBody UserUpdateVo vo,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
         SysUser user = new SysUser();
         user.setId(vo.getId());
         user.setNickname(vo.getNickname());
@@ -86,13 +91,25 @@ public class SysUserController {
         user.setEmail(vo.getEmail());
         user.setStatus(vo.getStatus());
         user.setShopId(vo.getShopId());
-        userService.updateUser(user, vo.getRoleIds());
+        userService.updateUser(user, vo.getRoleIds(), shopId);
         return R.ok();
     }
 
+    @PutMapping("/resetPwd/{id}")
+    public R<Map<String, String>> resetPassword(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        String newPwd = userService.resetPassword(id, shopId);
+        Map<String, String> result = new HashMap<>(2);
+        result.put("password", newPwd);
+        return R.ok(result);
+    }
+
     @DeleteMapping("/{id}")
-    public R<Void> delete(@PathVariable Long id) {
-        userService.deleteUser(id);
+    public R<Void> delete(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        userService.deleteUser(id, shopId);
         return R.ok();
     }
 }

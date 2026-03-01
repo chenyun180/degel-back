@@ -22,6 +22,24 @@ spring:
             - Path=/admin/**
           filters:
             - StripPrefix=1
+        - id: file-route
+          uri: lb://degel-file
+          predicates:
+            - Path=/file/**
+          filters:
+            - StripPrefix=1
+        - id: product-route
+          uri: lb://degel-product
+          predicates:
+            - Path=/product/**
+          filters:
+            - StripPrefix=1
+        - id: order-route
+          uri: lb://degel-order
+          predicates:
+            - Path=/order/**
+          filters:
+            - StripPrefix=1
   redis:
     host: localhost
     port: 6379
