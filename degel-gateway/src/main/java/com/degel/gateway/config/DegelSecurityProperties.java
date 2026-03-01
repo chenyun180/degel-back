@@ -14,4 +14,6 @@ public class DegelSecurityProperties {
 
     private String jwtSecret;
     private List<String> ignoreUrls = new ArrayList<>();
+    /** 仅允许服务间 Feign 调用的路径，Gateway 直接拒绝外部访问 */
+    private List<String> internalUrls = new ArrayList<>();
 }

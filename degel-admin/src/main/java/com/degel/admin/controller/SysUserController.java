@@ -5,14 +5,15 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.admin.entity.SysUser;
 import com.degel.admin.service.ISysMenuService;
 import com.degel.admin.service.ISysUserService;
-import com.degel.admin.vo.RouterVo;
+import com.degel.admin.vo.UserCreateVo;
+import com.degel.admin.vo.UserUpdateVo;
 import com.degel.common.core.R;
 import com.degel.common.core.dto.UserInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.Valid;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,7 +24,6 @@ public class SysUserController {
     private final ISysUserService userService;
     private final ISysMenuService menuService;
 
-    /** Auth 服务内部调用 - 根据用户名获取用户信息 */
     @GetMapping("/find/{username}")
     public R<UserInfo> findByUsername(@PathVariable String username) {
         UserInfo userInfo = userService.getUserInfoByUsername(username);
@@ -33,7 +33,6 @@ public class SysUserController {
         return R.ok(userInfo);
     }
 
-    /** 获取当前登录用户信息（前端调用） */
     @GetMapping("/info")
     public R<Map<String, Object>> getCurrentUserInfo(
             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
@@ -65,35 +64,29 @@ public class SysUserController {
     }
 
     @PostMapping
-    public R<Void> create(@RequestBody Map<String, Object> params) {
+    public R<Void> create(@Valid @RequestBody UserCreateVo vo) {
         SysUser user = new SysUser();
-        user.setUsername((String) params.get("username"));
-        user.setPassword((String) params.get("password"));
-        user.setNickname((String) params.get("nickname"));
-        user.setPhone((String) params.get("phone"));
-        user.setEmail((String) params.get("email"));
-        user.setStatus(params.get("status") != null ? (Integer) params.get("status") : 0);
-        user.setShopId(params.get("shopId") != null ? Long.valueOf(params.get("shopId").toString()) : 0L);
-
-        @SuppressWarnings("unchecked")
-        List<Long> roleIds = (List<Long>) params.get("roleIds");
-        userService.createUser(user, roleIds);
+        user.setUsername(vo.getUsername());
+        user.setPassword(vo.getPassword());
+        user.setNickname(vo.getNickname());
+        user.setPhone(vo.getPhone());
+        user.setEmail(vo.getEmail());
+        user.setStatus(vo.getStatus() != null ? vo.getStatus() : 0);
+        user.setShopId(vo.getShopId() != null ? vo.getShopId() : 0L);
+        userService.createUser(user, vo.getRoleIds());
         return R.ok();
     }
 
     @PutMapping
-    public R<Void> update(@RequestBody Map<String, Object> params) {
+    public R<Void> update(@Valid @RequestBody UserUpdateVo vo) {
         SysUser user = new SysUser();
-        user.setId(Long.valueOf(params.get("id").toString()));
-        user.setNickname((String) params.get("nickname"));
-        user.setPhone((String) params.get("phone"));
-        user.setEmail((String) params.get("email"));
-        user.setStatus(params.get("status") != null ? (Integer) params.get("status") : null);
-        user.setShopId(params.get("shopId") != null ? Long.valueOf(params.get("shopId").toString()) : null);
-
-        @SuppressWarnings("unchecked")
-        List<Long> roleIds = (List<Long>) params.get("roleIds");
-        userService.updateUser(user, roleIds);
+        user.setId(vo.getId());
+        user.setNickname(vo.getNickname());
+        user.setPhone(vo.getPhone());
+        user.setEmail(vo.getEmail());
+        user.setStatus(vo.getStatus());
+        user.setShopId(vo.getShopId());
+        userService.updateUser(user, vo.getRoleIds());
         return R.ok();
     }
 

@@ -5,12 +5,13 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.admin.entity.SysRole;
 import com.degel.admin.service.ISysRoleService;
+import com.degel.admin.vo.RoleAssignMenuVo;
 import com.degel.common.core.R;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.Valid;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/role")
@@ -59,13 +60,9 @@ public class SysRoleController {
         return R.ok();
     }
 
-    /** 分配菜单权限 */
     @PutMapping("/assignMenus")
-    public R<Void> assignMenus(@RequestBody Map<String, Object> params) {
-        Long roleId = Long.valueOf(params.get("roleId").toString());
-        @SuppressWarnings("unchecked")
-        List<Long> menuIds = (List<Long>) params.get("menuIds");
-        roleService.assignMenus(roleId, menuIds);
+    public R<Void> assignMenus(@Valid @RequestBody RoleAssignMenuVo vo) {
+        roleService.assignMenus(vo.getRoleId(), vo.getMenuIds());
         return R.ok();
     }
 

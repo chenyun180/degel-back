@@ -31,4 +31,5 @@ degel:
     jwt-secret: degel-jwt-secret-key-2024-platform-admin
     ignore-urls:
       - /auth/oauth/token
-      - /auth/oauth/check_token
+    internal-urls:
+      - /admin/user/find/
