@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
+import javax.annotation.PostConstruct;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -24,6 +25,13 @@ public class FileService {
     private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final MinioProperties minioProperties;
+
+    @PostConstruct
+    public void initBuckets() {
+        ensureBucketExists(minioProperties.getPublicBucket());
+        ensureBucketExists(minioProperties.getPrivateBucket());
+        ensurePublicBucketPolicy();
+    }
 
     /**
      * 上传文件。
@@ -98,5 +106,31 @@ public class FileService {
         return "private".equals(bucketType)
                 ? minioProperties.getPrivateBucket()
                 : minioProperties.getPublicBucket();
+    }
+
+    private void ensureBucketExists(String bucket) {
+        try {
+            s3Client.headBucket(HeadBucketRequest.builder().bucket(bucket).build());
+        } catch (S3Exception ex) {
+            s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+        }
+    }
+
+    private void ensurePublicBucketPolicy() {
+        String bucket = minioProperties.getPublicBucket();
+        String policy = "{"
+                + "\"Version\":\"2012-10-17\","
+                + "\"Statement\":[{"
+                + "\"Effect\":\"Allow\","
+                + "\"Principal\":\"*\","
+                + "\"Action\":[\"s3:GetObject\"],"
+                + "\"Resource\":[\"arn:aws:s3:::" + bucket + "/*\"]"
+                + "}]"
+                + "}";
+
+        s3Client.putBucketPolicy(PutBucketPolicyRequest.builder()
+                .bucket(bucket)
+                .policy(policy)
+                .build());
     }
 }

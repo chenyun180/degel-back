@@ -138,12 +138,15 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         for (SysRole role : roles) {
             long roleShopId = role.getShopId() != null ? role.getShopId() : 0L;
             if (expectedShopId == 0L) {
-                if (roleShopId != 0L) {
+                // 平台用户只能绑定平台角色
+                if (!Constants.ROLE_TYPE_PLATFORM.equals(role.getRoleType())) {
                     throw new BusinessException("平台用户不能分配店铺角色: " + role.getRoleName());
                 }
             } else {
-                if (roleShopId != expectedShopId) {
-                    throw new BusinessException("只能分配本店铺的角色: " + role.getRoleName());
+                // 店铺用户可绑定：全局预设的店铺角色（shopId=0, roleType=shop）
+                boolean isGlobalShopRole = Constants.ROLE_TYPE_SHOP.equals(role.getRoleType()) && roleShopId == 0L;
+                if (!isGlobalShopRole) {
+                    throw new BusinessException("只能分配店铺角色: " + role.getRoleName());
                 }
             }
         }

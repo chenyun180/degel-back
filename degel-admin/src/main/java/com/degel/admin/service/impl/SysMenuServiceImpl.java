@@ -83,14 +83,21 @@ public class SysMenuServiceImpl extends ServiceImpl<SysMenuMapper, SysMenu> impl
     }
 
     private List<RouterVo> buildRouters(List<SysMenu> menus) {
+        return buildRouters(menus, "");
+    }
+
+    private List<RouterVo> buildRouters(List<SysMenu> menus, String parentPath) {
         List<RouterVo> routers = new ArrayList<>();
         for (SysMenu menu : menus) {
             if (Constants.MENU_TYPE_BUTTON.equals(menu.getMenuType())) {
                 continue;
             }
             RouterVo router = new RouterVo();
+            String fullPath = parentPath.isEmpty()
+                    ? "/" + menu.getPath()
+                    : parentPath + "/" + menu.getPath();
             router.setName(capitalize(menu.getPath()));
-            router.setPath(Constants.MENU_TYPE_DIR.equals(menu.getMenuType()) ? "/" + menu.getPath() : menu.getPath());
+            router.setPath(fullPath);
             router.setComponent(Constants.MENU_TYPE_DIR.equals(menu.getMenuType()) ? "Layout" : menu.getComponent());
             router.setHidden(menu.getVisible() == 1);
             router.setMeta(new MetaVo(menu.getMenuName(), menu.getIcon()));
@@ -98,7 +105,7 @@ public class SysMenuServiceImpl extends ServiceImpl<SysMenuMapper, SysMenu> impl
             List<SysMenu> childMenus = menu.getChildren();
             if (childMenus != null && !childMenus.isEmpty()) {
                 router.setRedirect("noRedirect");
-                router.setChildren(buildRouters(childMenus));
+                router.setChildren(buildRouters(childMenus, fullPath));
             }
             routers.add(router);
         }
