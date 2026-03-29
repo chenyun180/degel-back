@@ -1,0 +1,52 @@
+server:
+  port: 9205
+
+spring:
+  application:
+    name: degel-app
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/degel_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+  redis:
+    host: localhost
+    port: 6379
+    database: 1   # C端独立 DB，与 admin 端隔离
+  security:
+    ignored: "/**"   # 关闭 Spring Security 默认拦截，由 AppSecurityFilter 接管
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  global-config:
+    db-config:
+      logic-delete-field: delFlag
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+
+degel:
+  app:
+    jwt:
+      secret: ${APP_JWT_SECRET:degel-c-end-secret-key-2024-change-in-prod}
+      expiration: 604800   # 7天，单位秒
+  inner:
+    token: ${INNER_TOKEN:degel-inner-service-token-2024}
+  wx:
+    appid: ${WX_APPID:your-wx-appid}
+    secret: ${WX_SECRET:your-wx-secret}
+    token-url: https://api.weixin.qq.com/sns/jscode2session
+
+feign:
+  client:
+    config:
+      default:
+        connect-timeout: 3000
+        read-timeout: 5000
+  circuitbreaker:
+    enabled: true
