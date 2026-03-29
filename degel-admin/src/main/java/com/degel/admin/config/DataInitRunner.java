@@ -186,16 +186,6 @@ public class DataInitRunner implements ApplicationRunner {
         menuService.save(infoMenu);
         allMenus.add(infoMenu);
 
-        SysMenu staffMenu = createMenu(settingDir.getId(), "员工管理", "shop-staff", "./Shop/Staff", "shop:staff:list", "", Constants.MENU_TYPE_MENU, 2);
-        menuService.save(staffMenu);
-        allMenus.add(staffMenu);
-        allMenus.addAll(saveButtons(staffMenu.getId(), "shop:staff"));
-
-        SysMenu shopRoleMenu = createMenu(settingDir.getId(), "角色管理", "shop-role", "./Shop/Role", "shop:role:list", "", Constants.MENU_TYPE_MENU, 3);
-        menuService.save(shopRoleMenu);
-        allMenus.add(shopRoleMenu);
-        allMenus.addAll(saveButtons(shopRoleMenu.getId(), "shop:role"));
-
         return allMenus;
     }
 
@@ -227,27 +217,12 @@ public class DataInitRunner implements ApplicationRunner {
         SysRole commonRole = createRole("普通用户", "common", Constants.ROLE_TYPE_PLATFORM, 0L, 3, "基本权限");
         roleService.save(commonRole);
 
-        // 店长角色（模板，shopId=0，创建店铺时会按需复制并绑定具体 shopId）
-        SysRole shopAdminRole = createRole("店长", Constants.ROLE_KEY_SHOP_ADMIN, Constants.ROLE_TYPE_SHOP, 0L, 1, "店铺管理员，拥有本店所有权限");
-        roleService.save(shopAdminRole);
+        // 店铺角色（全局预设，shopId=0，所有店铺账号共用此角色）
+        SysRole shopRole = createRole("店铺", Constants.ROLE_KEY_SHOP, Constants.ROLE_TYPE_SHOP, 0L, 1, "店铺账号，拥有商品管理与店铺信息权限");
+        roleService.save(shopRole);
         List<Long> shopMenuIds = shopMenus.stream().map(SysMenu::getId).collect(Collectors.toList());
-        roleMenuMapper.insertBatch(shopAdminRole.getId(), shopMenuIds);
-
-        // 店员角色（模板）
-        SysRole shopStaffRole = createRole("店员", Constants.ROLE_KEY_SHOP_STAFF, Constants.ROLE_TYPE_SHOP, 0L, 2, "店铺普通员工");
-        roleService.save(shopStaffRole);
-        Set<String> staffPerms = new HashSet<>(Arrays.asList(
-                "shop:dir:workspace", "shop:dashboard",
-                "shop:dir:product", "shop:product:list", "shop:category:list",
-                "shop:dir:order", "shop:order:list", "shop:order:ship",
-                "shop:dir:setting", "shop:setting:info"
-        ));
-        List<Long> staffMenuIds = shopMenus.stream()
-                .filter(m -> staffPerms.contains(m.getPerms()))
-                .map(SysMenu::getId)
-                .collect(Collectors.toList());
-        if (!staffMenuIds.isEmpty()) {
-            roleMenuMapper.insertBatch(shopStaffRole.getId(), staffMenuIds);
+        if (!shopMenuIds.isEmpty()) {
+            roleMenuMapper.insertBatch(shopRole.getId(), shopMenuIds);
         }
 
         // 超级管理员账号

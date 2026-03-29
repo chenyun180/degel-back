@@ -92,7 +92,7 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
         }
 
         String roleKey = existing.getRoleKey();
-        if (Constants.ROLE_KEY_SHOP_ADMIN.equals(roleKey) || Constants.ROLE_KEY_SHOP_STAFF.equals(roleKey)) {
+        if (Constants.ROLE_KEY_SHOP.equals(roleKey)) {
             throw new BusinessException("内置角色不允许删除");
         }
 

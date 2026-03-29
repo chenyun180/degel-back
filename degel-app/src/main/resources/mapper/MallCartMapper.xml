@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.degel.app.mapper.MallCartMapper">
+
+    <!-- 批量逻辑删除购物车（校验 user_id 防越权） -->
+    <update id="deleteByIdsAndUserId">
+        UPDATE mall_cart
+        SET del_flag = 1
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND user_id = #{userId}
+        AND del_flag = 0
+    </update>
+
+    <!-- 原子累加购物车数量（防并发 TOCTOU 竞态） -->
+    <update id="incrementQuantity">
+        UPDATE mall_cart
+        SET quantity = quantity + #{quantity}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND del_flag = 0
+    </update>
+
+</mapper>

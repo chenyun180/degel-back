@@ -8,7 +8,7 @@ import com.degel.product.vo.*;
 
 public interface IProductSpuService extends IService<ProductSpu> {
 
-    IPage<ProductSpu> pageSpu(Page<ProductSpu> page, ProductSpu query);
+    IPage<SpuListVo> pageSpu(Page<ProductSpu> page, ProductSpu query);
 
     void createSpu(SpuCreateVo vo, Long shopId);
 

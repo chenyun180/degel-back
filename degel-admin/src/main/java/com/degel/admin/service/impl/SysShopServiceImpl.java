@@ -4,14 +4,11 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.degel.admin.entity.SysMenu;
 import com.degel.admin.entity.SysRole;
 import com.degel.admin.entity.SysShop;
 import com.degel.admin.entity.SysUser;
-import com.degel.admin.mapper.SysRoleMenuMapper;
 import com.degel.admin.mapper.SysShopMapper;
 import com.degel.admin.mapper.SysUserRoleMapper;
-import com.degel.admin.service.ISysMenuService;
 import com.degel.admin.service.ISysRoleService;
 import com.degel.admin.service.ISysShopService;
 import com.degel.admin.service.ISysUserService;
@@ -24,16 +21,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class SysShopServiceImpl extends ServiceImpl<SysShopMapper, SysShop> implements ISysShopService {
 
     private final ISysRoleService roleService;
-    private final ISysMenuService menuService;
     private final ISysUserService userService;
-    private final SysRoleMenuMapper roleMenuMapper;
     private final SysUserRoleMapper userRoleMapper;
     private final PasswordEncoder passwordEncoder;
 
@@ -53,55 +47,16 @@ public class SysShopServiceImpl extends ServiceImpl<SysShopMapper, SysShop> impl
         this.save(shop);
         Long shopId = shop.getId();
 
-        List<SysMenu> allShopMenus = menuService.list(new LambdaQueryWrapper<SysMenu>()
-                .eq(SysMenu::getDelFlag, 0)
-                .likeRight(SysMenu::getPerms, "shop:"));
-
-        Set<Long> allShopMenuIds = allShopMenus.stream()
-                .map(SysMenu::getId)
-                .collect(Collectors.toSet());
-
-        // 创建店长角色
-        SysRole adminRole = new SysRole();
-        adminRole.setRoleName("店长");
-        adminRole.setRoleKey(Constants.ROLE_KEY_SHOP_ADMIN);
-        adminRole.setRoleType(Constants.ROLE_TYPE_SHOP);
-        adminRole.setShopId(shopId);
-        adminRole.setSort(1);
-        adminRole.setStatus(0);
-        adminRole.setRemark("店铺管理员，拥有店铺全部权限");
-        roleService.save(adminRole);
-
-        if (!allShopMenuIds.isEmpty()) {
-            roleMenuMapper.insertBatch(adminRole.getId(), new ArrayList<>(allShopMenuIds));
+        // 查询全局预设的店铺角色（shopId=0，所有店铺账号共用）
+        SysRole shopRole = roleService.getOne(new LambdaQueryWrapper<SysRole>()
+                .eq(SysRole::getRoleKey, Constants.ROLE_KEY_SHOP)
+                .eq(SysRole::getShopId, 0L)
+                .eq(SysRole::getDelFlag, 0));
+        if (shopRole == null) {
+            throw new BusinessException("店铺角色不存在，请联系管理员");
         }
 
-        // 创建店员角色（只读基础权限）
-        SysRole staffRole = new SysRole();
-        staffRole.setRoleName("店员");
-        staffRole.setRoleKey(Constants.ROLE_KEY_SHOP_STAFF);
-        staffRole.setRoleType(Constants.ROLE_TYPE_SHOP);
-        staffRole.setShopId(shopId);
-        staffRole.setSort(2);
-        staffRole.setStatus(0);
-        staffRole.setRemark("基础权限");
-        roleService.save(staffRole);
-
-        Set<String> staffPerms = new HashSet<>(Arrays.asList(
-                "shop:dir:workspace", "shop:dashboard",
-                "shop:dir:product", "shop:product:list", "shop:category:list",
-                "shop:dir:order", "shop:order:list", "shop:order:ship",
-                "shop:dir:setting", "shop:setting:info"
-        ));
-        List<Long> staffMenuIds = allShopMenus.stream()
-                .filter(m -> staffPerms.contains(m.getPerms()))
-                .map(SysMenu::getId)
-                .collect(Collectors.toList());
-        if (!staffMenuIds.isEmpty()) {
-            roleMenuMapper.insertBatch(staffRole.getId(), staffMenuIds);
-        }
-
-        // 创建店铺主账号
+        // 创建店铺账号
         String username = shop.getContactPhone();
         if (!StringUtils.hasText(username)) {
             username = "shop_" + shopId;
@@ -124,7 +79,7 @@ public class SysShopServiceImpl extends ServiceImpl<SysShopMapper, SysShop> impl
         owner.setStatus(0);
         owner.setShopId(shopId);
         userService.save(owner);
-        userRoleMapper.insertBatch(owner.getId(), Arrays.asList(adminRole.getId()));
+        userRoleMapper.insertBatch(owner.getId(), Arrays.asList(shopRole.getId()));
 
         Map<String, String> result = new HashMap<>(4);
         result.put("username", username);

@@ -25,6 +25,7 @@
         <module>degel-file</module>
         <module>degel-product</module>
         <module>degel-order</module>
+        <module>degel-app</module>
     </modules>
 
     <properties>

@@ -1,5 +1,6 @@
 package com.degel.product.service.impl;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,7 +32,7 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
     private final IProductSkuService skuService;
 
     @Override
-    public IPage<ProductSpu> pageSpu(Page<ProductSpu> page, ProductSpu query) {
+    public IPage<SpuListVo> pageSpu(Page<ProductSpu> page, ProductSpu query) {
         LambdaQueryWrapper<ProductSpu> wrapper = new LambdaQueryWrapper<>();
         if (query.getShopId() != null) {
             wrapper.eq(ProductSpu::getShopId, query.getShopId());
@@ -46,7 +47,42 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
             wrapper.like(ProductSpu::getName, query.getName());
         }
         wrapper.orderByDesc(ProductSpu::getCreateTime);
-        return page(page, wrapper);
+        IPage<ProductSpu> spuPage = page(page, wrapper);
+
+        List<SpuListVo> records = spuPage.getRecords().stream().map(spu -> {
+            List<ProductSku> skuList = skuService.listBySpuId(spu.getId());
+
+            BigDecimal minPrice = skuList.stream()
+                    .map(ProductSku::getPrice)
+                    .filter(price -> price != null)
+                    .min(BigDecimal::compareTo)
+                    .orElse(null);
+
+            Integer totalStock = skuList.stream()
+                    .map(ProductSku::getStock)
+                    .filter(stock -> stock != null)
+                    .reduce(0, Integer::sum);
+
+            SpuListVo vo = new SpuListVo();
+            vo.setId(spu.getId());
+            vo.setShopId(spu.getShopId());
+            vo.setCategoryId(spu.getCategoryId());
+            vo.setName(spu.getName());
+            vo.setSubtitle(spu.getSubtitle());
+            vo.setMainImage(spu.getMainImage());
+            vo.setAuditStatus(spu.getAuditStatus());
+            vo.setRejectReason(spu.getRejectReason());
+            vo.setStatus(spu.getStatus());
+            vo.setSaleCount(spu.getSaleCount());
+            vo.setMinPrice(minPrice);
+            vo.setTotalStock(totalStock);
+            vo.setCreateTime(spu.getCreateTime());
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<SpuListVo> result = new Page<>(spuPage.getCurrent(), spuPage.getSize(), spuPage.getTotal());
+        result.setRecords(records);
+        return result;
     }
 
     @Override

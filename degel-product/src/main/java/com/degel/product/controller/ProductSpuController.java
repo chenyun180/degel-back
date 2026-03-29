@@ -19,7 +19,7 @@ public class ProductSpuController {
     private final IProductSpuService spuService;
 
     @GetMapping("/list")
-    public R<IPage<ProductSpu>> list(
+    public R<IPage<SpuListVo>> list(
             @RequestParam(defaultValue = "1") Integer current,
             @RequestParam(defaultValue = "10") Integer size,
             @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId,

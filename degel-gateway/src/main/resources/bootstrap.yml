@@ -26,8 +26,6 @@ spring:
           uri: lb://degel-file
           predicates:
             - Path=/file/**
-          filters:
-            - StripPrefix=1
         - id: product-route
           uri: lb://degel-product
           predicates:
