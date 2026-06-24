@@ -1,6 +1,5 @@
 package com.degel.app.service;
 
-import com.alibaba.fastjson.JSON;
 import com.degel.app.feign.ProductFeignClient;
 import com.degel.app.service.impl.ProductServiceImpl;
 import com.degel.app.vo.AppSkuVO;
