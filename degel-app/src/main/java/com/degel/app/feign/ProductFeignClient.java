@@ -17,6 +17,7 @@ import java.util.List;
  */
 @FeignClient(
         name = "degel-product",
+        contextId = "productFeignClient",
         path = "/product",
         configuration = FeignConfig.class,
         fallback = ProductFeignFallback.class

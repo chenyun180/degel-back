@@ -1,7 +1,7 @@
 package com.degel.app.service.impl;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.TypeReference;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.app.feign.ProductFeignClient;
@@ -34,6 +34,8 @@ public class ProductServiceImpl implements ProductService {
     private static final String CACHE_CATEGORY_TREE = "product:category:tree";
     private static final String CACHE_SPU_PREFIX = "product:spu:";
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final ProductFeignClient productFeignClient;
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -44,7 +46,7 @@ public class ProductServiceImpl implements ProductService {
         // 1. 先查 Redis 缓存
         Object cached = redisTemplate.opsForValue().get(CACHE_CATEGORY_TREE);
         if (cached != null) {
-            return JSON.parseArray(JSON.toJSONString(cached), CategoryTreeVO.class);
+            return OBJECT_MAPPER.convertValue(cached, new TypeReference<List<CategoryTreeVO>>() {});
         }
 
         // 2. Cache miss：Feign 调用商品服务
@@ -102,7 +104,7 @@ public class ProductServiceImpl implements ProductService {
         Object cachedSpu = redisTemplate.opsForValue().get(spuCacheKey);
         ProductSpuVO spuVO = null;
         if (cachedSpu != null) {
-            spuVO = JSON.parseObject(JSON.toJSONString(cachedSpu), ProductSpuVO.class);
+            spuVO = OBJECT_MAPPER.convertValue(cachedSpu, ProductSpuVO.class);
         }
 
         // 2. CompletableFuture 并发调用（SPU 命中缓存时仍需实时获取 SKU）
@@ -158,7 +160,7 @@ public class ProductServiceImpl implements ProductService {
         // 解析图片 JSON
         if (spu.getImages() != null && !spu.getImages().isEmpty()) {
             try {
-                detail.setImages(JSON.parseArray(spu.getImages(), String.class));
+                detail.setImages(OBJECT_MAPPER.readValue(spu.getImages(), new TypeReference<List<String>>() {}));
             } catch (Exception e) {
                 log.warn("[ProductServiceImpl] 解析商品图片 JSON 失败，spuId={}", spuId);
                 detail.setImages(Collections.emptyList());
@@ -181,7 +183,7 @@ public class ProductServiceImpl implements ProductService {
                     // 解析规格 JSON
                     if (sku.getSpecData() != null && !sku.getSpecData().isEmpty()) {
                         try {
-                            skuVO.setSpecData(JSON.parseObject(sku.getSpecData(),
+                            skuVO.setSpecData(OBJECT_MAPPER.readValue(sku.getSpecData(),
                                     new TypeReference<Map<String, String>>() {}));
                         } catch (Exception e) {
                             log.warn("[ProductServiceImpl] 解析 SKU 规格 JSON 失败，skuId={}", sku.getId());

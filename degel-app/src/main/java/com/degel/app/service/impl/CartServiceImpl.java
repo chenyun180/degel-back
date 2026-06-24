@@ -1,7 +1,7 @@
 package com.degel.app.service.impl;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.TypeReference;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.degel.app.entity.MallCart;
@@ -338,12 +338,14 @@ public class CartServiceImpl implements CartService {
     /**
      * 解析 SKU 规格 JSON 为可读字符串，如 "颜色:红 / 尺码:XL"
      */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private String parseSkuSpec(String specDataJson) {
         if (specDataJson == null || specDataJson.isEmpty()) {
             return "";
         }
         try {
-            Map<String, String> specMap = JSON.parseObject(specDataJson, new TypeReference<Map<String, String>>() {});
+            Map<String, String> specMap = OBJECT_MAPPER.readValue(specDataJson, new TypeReference<Map<String, String>>() {});
             return specMap.entrySet().stream()
                     .map(e -> e.getKey() + ":" + e.getValue())
                     .collect(Collectors.joining(" / "));

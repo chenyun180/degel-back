@@ -7,15 +7,16 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
+        server-addr: 192.168.1.14:8848
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/degel_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://192.168.1.14:3306/degel_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    password: ${DB_PASSWORD:123456}
   redis:
-    host: localhost
+    host: 192.168.1.14
     port: 6379
+    password: root12345
     database: 1   # C端独立 DB，与 admin 端隔离
   security:
     ignored: "/**"   # 关闭 Spring Security 默认拦截，由 AppSecurityFilter 接管

@@ -7,7 +7,7 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
+        server-addr: 192.168.1.14:8848
     gateway:
       routes:
         - id: auth-route
@@ -38,14 +38,21 @@ spring:
             - Path=/order/**
           filters:
             - StripPrefix=1
+        - id: app-route
+          uri: lb://degel-app
+          predicates:
+            - Path=/app/**
   redis:
-    host: localhost
+    host: 192.168.1.14
     port: 6379
+    password: root12345
 
 degel:
   security:
     jwt-secret: degel-jwt-secret-key-2024-platform-admin
     ignore-urls:
       - /auth/oauth/token
+      - /app/
     internal-urls:
       - /admin/user/find/
+      - /inner/

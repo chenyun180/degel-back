@@ -7,15 +7,15 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
+        server-addr: 192.168.1.14:8848
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
 
 minio:
-  endpoint: http://localhost:9000
-  access-key: minioadmin
-  secret-key: minioadmin
+  endpoint: http://192.168.1.14:9000
+  access-key: root
+  secret-key: root12345
   public-bucket: degel-public
   private-bucket: degel-private

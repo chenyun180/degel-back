@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestBody;
  * 库存服务 Feign 客户端
  * 对应 degel-product 内部库存接口
  */
-@FeignClient(name = "degel-product", path = "/inner", fallback = StockFeignFallback.class)
+@FeignClient(name = "degel-product", contextId = "stockFeignClient", path = "/inner", fallback = StockFeignFallback.class)
 public interface StockFeignClient {
 
     /**
