@@ -39,3 +39,17 @@ spring-shell.log
 **/src/main/resources/application-local.yml
 **/src/main/resources/application-local.yaml
 **/src/main/resources/application-local.properties
+
+# editor swap files
+*.swp
+*.swo
+*~
+
+# Maven flatten plugin 产物
+.flattened-pom.xml
+
+# Spring Boot 工具类
+HELP.md
+
+# Claude / AI agent 本地缓存
+.claude/
