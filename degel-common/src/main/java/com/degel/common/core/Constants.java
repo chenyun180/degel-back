@@ -29,6 +29,9 @@ public class Constants {
     /** 角色标识 - 店铺（每个店铺只有一个角色） */
     public static final String ROLE_KEY_SHOP = "shop";
 
+    /** 角色标识 - 超级管理员 */
+    public static final String ROLE_KEY_ADMIN = "admin";
+
     /** 用户默认密码 */
     public static final String DEFAULT_PASSWORD = "admin123";
 

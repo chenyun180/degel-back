@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS order_item (
     quantity        INT           NOT NULL,
     total_amount    DECIMAL(10,2) NOT NULL,
     create_time     DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    update_time     DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    del_flag        TINYINT       DEFAULT 0 COMMENT '0=未删除 1=已删除',
     PRIMARY KEY (id),
     KEY idx_order_id (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细表';

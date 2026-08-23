@@ -105,6 +105,9 @@ public class SysShopServiceImpl extends ServiceImpl<SysShopMapper, SysShop> impl
                 .eq(SysUser::getShopId, shopId)
                 .eq(SysUser::getDelFlag, 0)
                 .set(SysUser::getStatus, status));
+
+        // 用户状态已变，清除这些用户的登录信息缓存，否则缓存 TTL 内仍按旧状态放行
+        userService.evictUserCacheByShopId(shopId);
     }
 
 }

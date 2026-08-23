@@ -26,6 +26,8 @@ public class DashboardService {
     private final IProductSkuService skuService;
 
     public DashboardOverviewVo getTodayOverview(Long shopId) {
+        // ⚠️ 空壳实现：GMV/订单数属 degel_order 库，product 服务无法计算，恒返回 0。
+        // 真实的流水/订单数据在 degel-order 的 /platform/dashboard/overview（平台维度）。
         DashboardOverviewVo vo = new DashboardOverviewVo();
         vo.setTodayGmv(BigDecimal.ZERO);
         vo.setTodayOrderCount(0);
@@ -51,6 +53,13 @@ public class DashboardService {
                 .eq(ProductSku::getDelFlag, 0)
                 .gt(ProductSku::getStockWarning, 0)
                 .apply("stock <= stock_warning"));
+
+        // 无预警 SKU 时直接返回空页——listByIds(空集合) 会生成 IN () 非法 SQL
+        if (warningSkus.isEmpty()) {
+            Page<StockWarningVo> empty = new Page<>(page.getCurrent(), page.getSize(), 0);
+            empty.setRecords(Collections.emptyList());
+            return empty;
+        }
 
         Map<Long, String> spuNameMap = spuService.listByIds(
                 warningSkus.stream().map(ProductSku::getSpuId).collect(Collectors.toSet()))
@@ -82,9 +91,11 @@ public class DashboardService {
         PendingCountsVo vo = new PendingCountsVo();
         vo.setPendingShipment(0);
         vo.setPendingAfterSale(0);
+        // shopId=0/null 为平台用户（网关注入 X-Shop-Id=0），不加店铺过滤即全平台维度
+        boolean filterShop = shopId != null && shopId > 0;
 
         List<Long> spuIds = spuService.list(new LambdaQueryWrapper<ProductSpu>()
-                .eq(ProductSpu::getShopId, shopId)
+                .eq(filterShop, ProductSpu::getShopId, shopId)
                 .eq(ProductSpu::getDelFlag, 0)
                 .select(ProductSpu::getId))
                 .stream().map(ProductSpu::getId).collect(Collectors.toList());
@@ -101,7 +112,7 @@ public class DashboardService {
         }
 
         long auditCount = spuService.count(new LambdaQueryWrapper<ProductSpu>()
-                .eq(ProductSpu::getShopId, shopId)
+                .eq(filterShop, ProductSpu::getShopId, shopId)
                 .eq(ProductSpu::getAuditStatus, Constants.AUDIT_PENDING)
                 .eq(ProductSpu::getDelFlag, 0));
         vo.setPendingAudit((int) auditCount);

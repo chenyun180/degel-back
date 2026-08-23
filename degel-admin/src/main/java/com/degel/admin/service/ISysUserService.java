@@ -21,5 +21,7 @@ public interface ISysUserService extends IService<SysUser> {
 
     List<String> getRoleKeysByUserId(Long userId);
 
+    void evictUserCacheByShopId(Long shopId);
+
     String resetPassword(Long userId, Long shopId);
 }

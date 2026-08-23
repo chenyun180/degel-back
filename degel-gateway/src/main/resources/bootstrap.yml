@@ -56,3 +56,19 @@ degel:
     internal-urls:
       - /admin/user/find/
       - /inner/
+    # admin-urls 为前缀匹配（startsWith），如 "*:/admin/user" 也会命中 /admin/users/export 等未来新增路径
+    admin-urls:
+      - "*:/admin/user"
+      - "*:/admin/role"
+      - "*:/admin/menu"
+      - "*:/admin/shop"
+      - "PUT:/product/spu/audit"
+      - "POST:/product/category"
+      - "PUT:/product/category"
+      - "DELETE:/product/category"
+      # 平台工作台数据看板（前缀恰好覆盖 /overview 与 /trend，勿放宽为 /order/platform）
+      - "GET:/order/platform/dashboard"
+    # admin-url-excludes 为 admin-urls 的例外（登录用户自服务接口），优先级高于 admin-urls
+    admin-url-excludes:
+      - "GET:/admin/user/info"
+      - "*:/admin/shop/mine"

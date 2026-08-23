@@ -120,6 +120,10 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         if (count > 0) {
             throw new BusinessException("用户名已存在");
         }
+
+        // 一店一账号：非平台用户（shopId > 0）所在店铺不允许已有其他账号
+        checkShopSingleAccount(user.getShopId(), null);
+
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         this.save(user);
 
@@ -152,6 +156,26 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         }
     }
 
+    /**
+     * 一店一账号校验：目标店铺（shopId > 0）不允许已有其他账号。
+     *
+     * @param shopId        目标店铺 id（null 归一化为 0，表示平台用户，不校验）
+     * @param excludeUserId 更新场景排除自己，创建场景传 null
+     */
+    private void checkShopSingleAccount(Long shopId, Long excludeUserId) {
+        long expectedShopId = shopId != null ? shopId : 0L;
+        if (expectedShopId == 0L) {
+            return;
+        }
+        long shopUserCount = this.count(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getShopId, expectedShopId)
+                .eq(SysUser::getDelFlag, 0)
+                .ne(excludeUserId != null, SysUser::getId, excludeUserId));
+        if (shopUserCount > 0) {
+            throw new BusinessException("该店铺已有账号，一个店铺仅允许一个账号");
+        }
+    }
+
     private void checkShopOwnership(SysUser existing, Long shopId) {
         if (shopId != null && shopId != 0L) {
             if (existing == null) {
@@ -170,18 +194,30 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         SysUser existing = this.getById(user.getId());
         checkShopOwnership(existing, shopId);
 
+        // 一店一账号：若本次更新将用户迁移到新的非平台店铺，校验目标店铺是否已有账号
+        Long effectiveShopId = user.getShopId() != null
+                ? user.getShopId()
+                : (existing != null ? existing.getShopId() : null);
+        long newShopId = effectiveShopId != null ? effectiveShopId : 0L;
+        long oldShopId = existing != null && existing.getShopId() != null ? existing.getShopId() : 0L;
+        if (newShopId != oldShopId && newShopId != 0L) {
+            checkShopSingleAccount(newShopId, user.getId());
+        }
+
         user.setPassword(null);
         this.updateById(user);
 
         if (roleIds != null) {
             userRoleMapper.deleteByUserId(user.getId());
             if (!roleIds.isEmpty()) {
+                // 与 createUser 一致：更新时也要校验角色范围，防止越权绑定平台角色
+                validateRoleScope(effectiveShopId, roleIds);
                 userRoleMapper.insertBatch(user.getId(), roleIds);
             }
         }
 
         if (existing != null) {
-            redisTemplate.delete(USER_CACHE_PREFIX + existing.getUsername());
+            evictUserCache(existing.getUsername());
         }
     }
 
@@ -195,7 +231,7 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         userRoleMapper.deleteByUserId(userId);
 
         if (existing != null) {
-            redisTemplate.delete(USER_CACHE_PREFIX + existing.getUsername());
+            evictUserCache(existing.getUsername());
         }
     }
 
@@ -213,8 +249,26 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         update.setPassword(passwordEncoder.encode(newPassword));
         this.updateById(update);
 
-        redisTemplate.delete(USER_CACHE_PREFIX + user.getUsername());
+        evictUserCache(user.getUsername());
         return newPassword;
+    }
+
+    @Override
+    public void evictUserCacheByShopId(Long shopId) {
+        List<SysUser> users = this.list(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getShopId, shopId)
+                .eq(SysUser::getDelFlag, 0));
+        for (SysUser user : users) {
+            evictUserCache(user.getUsername());
+        }
+    }
+
+    private void evictUserCache(String username) {
+        try {
+            redisTemplate.delete(USER_CACHE_PREFIX + username);
+        } catch (Exception e) {
+            log.warn("Evict user cache failed for {}: {}", username, e.getMessage());
+        }
     }
 
     @Override

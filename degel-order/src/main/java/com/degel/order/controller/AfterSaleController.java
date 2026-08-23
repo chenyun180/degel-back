@@ -12,7 +12,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 
 @RestController
-@RequestMapping("/order/after-sale")
+// 网关 /order/** 路由 StripPrefix=1 已剥掉第一段，服务侧不应再带 /order 前缀（前端调 /order/after-sale/list）
+@RequestMapping("/after-sale")
 @RequiredArgsConstructor
 public class AfterSaleController {
 

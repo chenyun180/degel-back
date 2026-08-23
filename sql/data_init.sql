@@ -9,7 +9,7 @@ USE degel_admin;
 
 -- ====================================================================
 -- 一、菜单数据（固定 ID）
--- 平台端：1-29   店铺端：100-149
+-- 平台端：1-25   店铺端：100-149
 -- ====================================================================
 
 -- ---------- 平台端：系统管理目录 ----------
@@ -88,11 +88,10 @@ ALTER TABLE sys_menu AUTO_INCREMENT = 200;
 -- 二、角色数据
 -- ====================================================================
 
+-- id 2/3 为已移除的 operator/common 角色保留空洞，兼容存量库（见 migrate_remove_operator_common.sql）
 INSERT INTO sys_role (id, role_name, role_key, role_type, shop_id, sort, status, remark, del_flag) VALUES
-(1, '超级管理员', 'admin',    'platform', 0, 1, 0, '拥有所有权限',               0),
-(2, '平台运营',   'operator', 'platform', 0, 2, 0, '商品审核与类目管理',          0),
-(3, '普通用户',   'common',   'platform', 0, 3, 0, '基本权限',                   0),
-(4, '店铺',       'shop',     'shop',     0, 1, 0, '店铺账号，拥有商品管理与店铺信息权限', 0);
+(1, '超级管理员', 'admin', 'platform', 0, 1, 0, '拥有所有权限', 0),
+(4, '店铺',       'shop',  'shop',     0, 1, 0, '店铺账号，拥有商品管理与店铺信息权限', 0);
 
 ALTER TABLE sys_role AUTO_INCREMENT = 10;
 
@@ -108,12 +107,6 @@ INSERT INTO sys_role_menu (role_id, menu_id) VALUES
 (1, 10),(1, 11),(1, 12),(1, 13),
 (1, 14),(1, 15),(1, 16),(1, 17),
 (1, 20),(1, 21),(1, 22),(1, 23),(1, 24),(1, 25);
-
--- 平台运营（id=2）：商品管理目录 + 审核 + 类目
-INSERT INTO sys_role_menu (role_id, menu_id) VALUES
-(2, 20),(2, 21),(2, 22),(2, 23),(2, 24),(2, 25);
-
--- 普通用户（id=3）：无菜单权限
 
 -- 店铺角色（id=4）：全部店铺端菜单（商品管理 + 订单管理 + 数据统计 + 店铺信息）
 INSERT INTO sys_role_menu (role_id, menu_id) VALUES

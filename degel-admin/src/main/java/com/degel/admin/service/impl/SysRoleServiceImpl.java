@@ -16,7 +16,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -65,14 +70,18 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
 
     @Override
     public void updateRole(SysRole role, Long shopId) {
-        if (shopId != null && shopId != 0L) {
-            SysRole existing = this.getById(role.getId());
-            if (existing == null) {
-                throw new BusinessException("角色不存在");
-            }
-            if (!shopId.equals(existing.getShopId())) {
-                throw new BusinessException("无权修改其他店铺的角色");
-            }
+        SysRole existing = this.getById(role.getId());
+        if (existing == null) {
+            throw new BusinessException("角色不存在");
+        }
+        if (shopId != null && shopId != 0L && !shopId.equals(existing.getShopId())) {
+            throw new BusinessException("无权修改其他店铺的角色");
+        }
+        // 内置角色（admin/shop）的 roleKey 被多处业务逻辑依赖，禁止修改
+        if (isBuiltInRole(existing.getRoleKey())
+                && role.getRoleKey() != null
+                && !role.getRoleKey().equals(existing.getRoleKey())) {
+            throw new BusinessException("内置角色不允许修改角色标识");
         }
         this.updateById(role);
     }
@@ -92,7 +101,7 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
         }
 
         String roleKey = existing.getRoleKey();
-        if (Constants.ROLE_KEY_SHOP.equals(roleKey)) {
+        if (isBuiltInRole(roleKey)) {
             throw new BusinessException("内置角色不允许删除");
         }
 
@@ -121,12 +130,37 @@ public class SysRoleServiceImpl extends ServiceImpl<SysRoleMapper, SysRole> impl
 
         roleMenuMapper.deleteByRoleId(roleId);
         if (menuIds != null && !menuIds.isEmpty()) {
-            roleMenuMapper.insertBatch(roleId, menuIds);
+            roleMenuMapper.insertBatch(roleId, completeAncestorMenus(menuIds));
         }
     }
 
     @Override
     public List<Long> getMenuIdsByRoleId(Long roleId) {
         return roleMenuMapper.selectMenuIdsByRoleId(roleId);
+    }
+
+    private boolean isBuiltInRole(String roleKey) {
+        return Constants.ROLE_KEY_ADMIN.equals(roleKey) || Constants.ROLE_KEY_SHOP.equals(roleKey);
+    }
+
+    /**
+     * 补全 menuIds 中缺失的祖先菜单 id。
+     * 前端菜单树在父子联动（非 checkStrictly）模式下，半选的父目录不会出现在提交值里；
+     * 若不补全祖先，getRoutersByUserId 按 parent_id=0 建树时会丢掉整个子树。
+     */
+    private List<Long> completeAncestorMenus(List<Long> menuIds) {
+        List<SysMenu> allMenus = menuMapper.selectList(null);
+        Map<Long, Long> parentMap = allMenus.stream()
+                .collect(Collectors.toMap(SysMenu::getId, SysMenu::getParentId));
+
+        Set<Long> fullIds = new HashSet<>(menuIds);
+        for (Long menuId : menuIds) {
+            Long parent = parentMap.get(menuId);
+            while (parent != null && parent != 0L && !fullIds.contains(parent)) {
+                fullIds.add(parent);
+                parent = parentMap.get(parent);
+            }
+        }
+        return new ArrayList<>(fullIds);
     }
 }

@@ -1,5 +1,6 @@
 package com.degel.gateway.filter;
 
+import com.degel.common.core.Constants;
 import com.degel.gateway.config.DegelSecurityProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -23,6 +24,9 @@ import reactor.core.publisher.Mono;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -50,6 +54,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     h.remove("X-User-Id");
                     h.remove("X-User-Name");
                     h.remove("X-Shop-Id");
+                    h.remove("X-User-Roles");
                 })
                 .build();
         exchange = exchange.mutate().request(cleanedRequest).build();
@@ -88,10 +93,24 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     Object userName = claims.get("user_name");
                     Object shopId = claims.get("shop_id");
 
+                    Object roleKeysObj = claims.get("role_keys");
+                    List<String> roleKeys = new ArrayList<>();
+                    if (roleKeysObj instanceof Collection) {
+                        for (Object r : (Collection<?>) roleKeysObj) {
+                            roleKeys.add(String.valueOf(r));
+                        }
+                    }
+                    // 存量 token 无 role_keys 时 roleKeys 为空列表，访问 admin-urls 会被拒绝。
+                    // 这是有意设计：强制旧 token 重新登录以获取带角色信息的新 token，不放宽。
+                    if (isAdminOnly(cleanedRequest) && !roleKeys.contains(Constants.ROLE_KEY_ADMIN)) {
+                        return forbidden(finalExchange, "无权限执行此操作");
+                    }
+
                     ServerHttpRequest mutatedRequest = finalExchange.getRequest().mutate()
                             .header("X-User-Id", userId != null ? userId.toString() : "")
                             .header("X-User-Name", userName != null ? userName.toString() : "")
                             .header("X-Shop-Id", shopId != null ? shopId.toString() : "0")
+                            .header("X-User-Roles", String.join(",", roleKeys))
                             .build();
 
                     return chain.filter(finalExchange.mutate().request(mutatedRequest).build());
@@ -122,6 +141,37 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
     private boolean isInternal(String path) {
         return properties.getInternalUrls().stream().anyMatch(path::startsWith);
+    }
+
+    /**
+     * 判断请求是否命中 admin-urls 规则。
+     * 注意：路径为前缀匹配（startsWith），如 "*:/admin/user" 也会命中 /admin/users/export 等未来新增路径。
+     * 格式错误的规则（无冒号或冒号在首尾）记录警告后忽略，保持不拦截语义。
+     * admin-url-excludes 例外优先：命中则直接返回 false，不做 admin 角色校验（自服务接口）。
+     */
+    private boolean isAdminOnly(ServerHttpRequest request) {
+        String path = request.getPath().value();
+        String method = request.getMethodValue();
+        if (matchesRule(properties.getAdminUrlExcludes(), method, path)) {
+            return false;
+        }
+        return properties.getAdminUrls().stream().anyMatch(rule -> matchesRule(rule, method, path));
+    }
+
+    private boolean matchesRule(List<String> rules, String method, String path) {
+        return rules != null && rules.stream().anyMatch(rule -> matchesRule(rule, method, path));
+    }
+
+    private boolean matchesRule(String rule, String method, String path) {
+        int idx = rule.indexOf(':');
+        if (idx <= 0 || idx == rule.length() - 1) {
+            log.warn("忽略格式错误的 admin-urls 规则: {}", rule);
+            return false;
+        }
+        String ruleMethod = rule.substring(0, idx);
+        String rulePath = rule.substring(idx + 1);
+        return ("*".equals(ruleMethod) || ruleMethod.equalsIgnoreCase(method))
+                && path.startsWith(rulePath);
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, String message) {

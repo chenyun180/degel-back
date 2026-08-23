@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 
 @RestController
-@RequestMapping("/order")
+// 网关 /order/** 路由配置了 StripPrefix=1（剥掉第一段），服务侧不能再带 /order 前缀，
+// 否则前端 /order/list 到这里变成 /order/list + /list 双重前缀而 404
+@RequestMapping("")
 @RequiredArgsConstructor
 public class OrderController {
 

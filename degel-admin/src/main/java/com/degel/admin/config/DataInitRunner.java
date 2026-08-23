@@ -53,6 +53,15 @@ public class DataInitRunner implements ApplicationRunner {
     private List<SysMenu> initPlatformMenus() {
         List<SysMenu> allMenus = new ArrayList<>();
 
+        // 平台工作台目录（sort=0 排最前，作为管理员登录默认页）
+        SysMenu platformDir = createMenu(0L, "平台工作台", "platform", "", "", "DashboardOutlined", Constants.MENU_TYPE_DIR, 0);
+        menuService.save(platformDir);
+        allMenus.add(platformDir);
+
+        SysMenu dashboardMenu = createMenu(platformDir.getId(), "数据看板", "dashboard", "./Platform/Dashboard", "platform:dashboard", "DashboardOutlined", Constants.MENU_TYPE_MENU, 1);
+        menuService.save(dashboardMenu);
+        allMenus.add(dashboardMenu);
+
         // 系统管理目录
         SysMenu systemDir = createMenu(0L, "系统管理", "system", "", "", "SettingOutlined", Constants.MENU_TYPE_DIR, 1);
         menuService.save(systemDir);
@@ -79,7 +88,8 @@ public class DataInitRunner implements ApplicationRunner {
         allMenus.addAll(saveButtons(shopMenu.getId(), "system:shop"));
 
         // 商品管理目录（平台端：审核+类目）
-        SysMenu productDir = createMenu(0L, "商品管理", "product", "", "", "ShoppingOutlined", Constants.MENU_TYPE_DIR, 2);
+        // path 必须与前端 config/routes.ts 的 /platform-product 和 sql/data_init.sql 保持一致
+        SysMenu productDir = createMenu(0L, "商品管理", "platform-product", "", "", "ShoppingOutlined", Constants.MENU_TYPE_DIR, 2);
         menuService.save(productDir);
         allMenus.add(productDir);
 
@@ -193,29 +203,10 @@ public class DataInitRunner implements ApplicationRunner {
 
     private void initRolesAndAdmin(List<SysMenu> platformMenus, List<SysMenu> shopMenus) {
         // 超级管理员 — 拥有全部平台菜单
-        SysRole adminRole = createRole("超级管理员", "admin", Constants.ROLE_TYPE_PLATFORM, 0L, 1, "拥有所有权限");
+        SysRole adminRole = createRole("超级管理员", Constants.ROLE_KEY_ADMIN, Constants.ROLE_TYPE_PLATFORM, 0L, 1, "拥有所有权限");
         roleService.save(adminRole);
         List<Long> allMenuIds = platformMenus.stream().map(SysMenu::getId).collect(Collectors.toList());
         roleMenuMapper.insertBatch(adminRole.getId(), allMenuIds);
-
-        // 平台运营 — 拥有商品审核+类目管理菜单
-        SysRole operatorRole = createRole("平台运营", "operator", Constants.ROLE_TYPE_PLATFORM, 0L, 2, "商品审核与类目管理");
-        roleService.save(operatorRole);
-        List<Long> operatorMenuIds = platformMenus.stream()
-                .filter(m -> m.getPerms() != null && (m.getPerms().startsWith("product:") || m.getPerms().isEmpty()))
-                .filter(m -> {
-                    String perms = m.getPerms();
-                    return perms.startsWith("product:") || "商品管理".equals(m.getMenuName());
-                })
-                .map(SysMenu::getId)
-                .collect(Collectors.toList());
-        if (!operatorMenuIds.isEmpty()) {
-            roleMenuMapper.insertBatch(operatorRole.getId(), operatorMenuIds);
-        }
-
-        // 普通用户（平台）
-        SysRole commonRole = createRole("普通用户", "common", Constants.ROLE_TYPE_PLATFORM, 0L, 3, "基本权限");
-        roleService.save(commonRole);
 
         // 店铺角色（全局预设，shopId=0，所有店铺账号共用此角色）
         SysRole shopRole = createRole("店铺", Constants.ROLE_KEY_SHOP, Constants.ROLE_TYPE_SHOP, 0L, 1, "店铺账号，拥有商品管理与店铺信息权限");

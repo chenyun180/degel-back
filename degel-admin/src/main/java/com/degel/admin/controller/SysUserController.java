@@ -75,7 +75,7 @@ public class SysUserController {
         user.setPhone(vo.getPhone());
         user.setEmail(vo.getEmail());
         user.setStatus(vo.getStatus() != null ? vo.getStatus() : 0);
-        user.setShopId(vo.getShopId() != null ? vo.getShopId() : 0L);
+        user.setShopId(shopId != null && shopId > 0 ? shopId : (vo.getShopId() != null ? vo.getShopId() : 0L));
         userService.createUser(user, vo.getRoleIds(), shopId);
         return R.ok();
     }
@@ -90,7 +90,8 @@ public class SysUserController {
         user.setPhone(vo.getPhone());
         user.setEmail(vo.getEmail());
         user.setStatus(vo.getStatus());
-        user.setShopId(vo.getShopId());
+        // shopId 为 null 时表示不修改归属店铺（MyBatis Plus 跳过 null 字段）
+        user.setShopId(shopId != null && shopId > 0 ? shopId : vo.getShopId());
         userService.updateUser(user, vo.getRoleIds(), shopId);
         return R.ok();
     }
