@@ -36,6 +36,8 @@ degel:
     jwt:
       secret: ${APP_JWT_SECRET:degel-c-end-secret-key-2024-change-in-prod}
       expiration: 604800   # 7天，单位秒
+    # 文件访问基地址（C 端拼图片绝对 URL 用；生产改为公网网关/CDN 域名）
+    file-base-url: ${FILE_BASE_URL:http://localhost:9999}
   inner:
     token: ${INNER_TOKEN:degel-inner-service-token-2024}
   wx:

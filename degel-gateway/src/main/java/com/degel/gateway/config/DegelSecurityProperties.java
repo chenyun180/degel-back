@@ -13,6 +13,8 @@ import java.util.List;
 public class DegelSecurityProperties {
 
     private String jwtSecret;
+    /** C 端 JWT 密钥（与 degel-app 的 degel.app.jwt.secret 一致），网关统一校验 c_end 令牌用 */
+    private String appJwtSecret;
     private List<String> ignoreUrls = new ArrayList<>();
     /** 仅允许服务间 Feign 调用的路径，Gateway 直接拒绝外部访问 */
     private List<String> internalUrls = new ArrayList<>();

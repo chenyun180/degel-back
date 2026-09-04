@@ -56,4 +56,19 @@ public class ProductController {
     public R<AppSpuDetailVO> getProductDetail(@PathVariable Long spuId) {
         return R.ok(productService.getProductDetail(spuId));
     }
+
+    /**
+     * 推荐商品（简单规则：按销量倒序，缓存 5 分钟，无需登录）
+     * GET /app/product/recommend
+     */
+    @GetMapping("/recommend")
+    public R<IPage<AppSpuListVO>> getRecommendList(
+            @RequestParam(value = "page", defaultValue = "1") Integer page,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        // pageSize 最大限制 50
+        if (pageSize > 50) {
+            pageSize = 50;
+        }
+        return R.ok(productService.getRecommendList(page, pageSize));
+    }
 }

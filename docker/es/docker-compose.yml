@@ -1,0 +1,84 @@
+# Degel 商品搜索 ES 集群 —— 3 节点单集群，索引 1 副本实现节点级互备
+# 版本：7.17.29（7.17 线最终维护版，与 Spring Boot 2.6 / Spring Data ES 4.3 官方匹配）
+#
+# 部署前宿主机必须执行（ES mmapfs 硬要求）：
+#   sudo sysctl -w vm.max_map_count=262144
+#   # 持久化：echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
+#
+# 启动：  docker compose up -d
+# 验证：  curl http://localhost:9200/_cluster/health?pretty
+#   status=green 表示所有副本分片已分布到 3 节点（互备生效）
+#
+# ⚠️ 安全注意：xpack.security 保持关闭（同网段内网学习环境）。
+#    端口仅映射 9200/9201/9202 对宿主机，9300 集群内部通信端口不对外暴露。
+#    生产环境必须开启 xpack.security + TLS，或用防火墙限制 9200 来源 IP。
+
+x-common: &es-common
+  # 本地构建：基于官方 7.17.29 镜像 + IK 中文分词器（见同目录 Dockerfile）
+  # 重建：docker compose build && docker compose up -d（数据在命名卷，不丢）
+  image: degel-es:7.17.29-ik
+  build: .
+  ulimits:
+    memlock:
+      soft: -1
+      hard: -1
+  restart: unless-stopped
+  environment: &es-env
+    cluster.name: degel-es
+    discovery.seed_hosts: es-1,es-2,es-3
+    # 仅首次组网生效（集群第一次选主用），后续重启不再需要
+    cluster.initial_master_nodes: es-1,es-2,es-3
+    bootstrap.memory_lock: "true"
+    xpack.security.enabled: "false"
+    # CORS：供 elasticvue 等浏览器端工具直连。⚠️ 无认证集群 + CORS 全开 = 同网段任意网页可访问，
+    # 仅限学习环境；生产必须关掉并改用带认证的服务端工具（如 Kibana）
+    http.cors.enabled: "true"
+    http.cors.allow-origin: "*"
+    http.cors.allow-headers: "X-Requested-With, Content-Type, Content-Length, Authorization"
+    # WSL2 虚拟机仅 7.6GB（已跑 mysql/nacos/redis/minio），3 节点各 512MB 堆是资源权衡；
+    # 数据量上来或扩内存后调成 1g
+    ES_JAVA_OPTS: -Xms512m -Xmx512m
+
+services:
+  es-1:
+    <<: *es-common
+    container_name: es-1
+    environment:
+      <<: *es-env
+      node.name: es-1
+    volumes:
+      - es-data01:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  es-2:
+    <<: *es-common
+    container_name: es-2
+    environment:
+      <<: *es-env
+      node.name: es-2
+    volumes:
+      - es-data02:/usr/share/elasticsearch/data
+    ports:
+      - "9201:9200"
+
+  es-3:
+    <<: *es-common
+    container_name: es-3
+    environment:
+      <<: *es-env
+      node.name: es-3
+    volumes:
+      - es-data03:/usr/share/elasticsearch/data
+    ports:
+      - "9202:9200"
+
+volumes:
+  es-data01:
+  es-data02:
+  es-data03:

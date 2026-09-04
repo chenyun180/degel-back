@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS mall_address (
     city        VARCHAR(50)  DEFAULT '' COMMENT '市',
     district    VARCHAR(50)  DEFAULT '' COMMENT '区/县',
     detail      VARCHAR(255) DEFAULT '' COMMENT '详细地址',
+    longitude   DECIMAL(9,6) DEFAULT NULL COMMENT '经度（GCJ-02 火星坐标系，高德地图选点）',
+    latitude    DECIMAL(8,6) DEFAULT NULL COMMENT '纬度（GCJ-02 火星坐标系，高德地图选点）',
     is_default  TINYINT      DEFAULT 0 COMMENT '0=否 1=默认地址',
     del_flag    TINYINT      DEFAULT 0 COMMENT '0=正常 1=已删除',
     create_time DATETIME     DEFAULT CURRENT_TIMESTAMP,

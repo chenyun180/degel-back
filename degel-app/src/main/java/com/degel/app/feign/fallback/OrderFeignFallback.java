@@ -1,6 +1,6 @@
 package com.degel.app.feign.fallback;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.app.vo.AfterSaleInfoVO;
 import com.degel.app.vo.OrderInfoVO;
 import com.degel.app.feign.OrderFeignClient;
@@ -10,6 +10,8 @@ import com.degel.app.vo.dto.OrderStatusUpdateVO;
 import com.degel.common.core.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * OrderFeignClient 降级实现
@@ -31,7 +33,7 @@ public class OrderFeignFallback implements OrderFeignClient {
     }
 
     @Override
-    public R<IPage<OrderInfoVO>> pageOrders(Long userId, Integer status, Integer page, Integer pageSize) {
+    public R<Page<OrderInfoVO>> pageOrders(Long userId, Integer status, Integer page, Integer pageSize) {
         log.error("[OrderFeignFallback] pageOrders 降级");
         return R.fail(50001, "订单服务暂不可用，请稍后重试");
     }
@@ -43,13 +45,19 @@ public class OrderFeignFallback implements OrderFeignClient {
     }
 
     @Override
+    public R<List<OrderInfoVO>> cancelTimeoutOrders() {
+        log.error("[OrderFeignFallback] cancelTimeoutOrders 降级");
+        return R.fail(50001, "订单服务暂不可用");
+    }
+
+    @Override
     public R<Long> createAfterSale(AfterSaleCreateInnerReqVO reqVO) {
         log.error("[OrderFeignFallback] createAfterSale 降级");
         return R.fail(50001, "订单服务暂不可用，请稍后重试");
     }
 
     @Override
-    public R<IPage<AfterSaleInfoVO>> pageAfterSales(Long userId, Integer status, Integer page, Integer pageSize) {
+    public R<Page<AfterSaleInfoVO>> pageAfterSales(Long userId, Integer status, Integer page, Integer pageSize) {
         log.error("[OrderFeignFallback] pageAfterSales 降级");
         return R.fail(50001, "订单服务暂不可用，请稍后重试");
     }

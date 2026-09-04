@@ -13,6 +13,13 @@ spring:
     url: jdbc:mysql://192.168.1.14:3306/degel_product?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: 123456
+  # C 端商品搜索 ES 集群（192.168.1.14 三节点，IK 分词）。多 uri 由 RestClient 轮询 + 故障转移。
+  # 超时预算：ES 全停时 RestClient 逐节点尝试（1s 连接 ×3 + 2s 读）最坏约 4s 必须降级完成，
+  # 否则超过 degel-app Feign read-timeout(5s)，C 端会拿到超时错误而非 MySQL 兜底结果
+  elasticsearch:
+    uris: http://192.168.1.14:9200,http://192.168.1.14:9201,http://192.168.1.14:9202
+    connection-timeout: 1s
+    socket-timeout: 2s
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml

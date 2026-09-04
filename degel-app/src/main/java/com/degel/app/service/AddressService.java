@@ -36,6 +36,13 @@ public interface AddressService {
     List<AddressVO> list(Long userId);
 
     /**
+     * 获取单条收货地址
+     * 校验：del_flag=0 AND id=? AND userId=?，不存在或无权抛异常
+     */
+    AddressVO get(Long userId, Long addressId);
+
+
+    /**
      * 设为默认地址（事务）
      * 1. 将用户所有地址 is_default=0
      * 2. 将指定地址 is_default=1

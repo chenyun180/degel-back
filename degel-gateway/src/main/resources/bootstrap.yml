@@ -49,13 +49,23 @@ spring:
 
 degel:
   security:
-    jwt-secret: degel-jwt-secret-key-2024-platform-admin
+    # 管理端 JWT 密钥：生产必须用环境变量 JWT_SECRET 覆盖默认值（与 degel-auth 保持一致）
+    jwt-secret: ${JWT_SECRET:degel-jwt-secret-key-2024-platform-admin}
+    # C 端 JWT 密钥：与 degel-app 的 APP_JWT_SECRET 一致（网关统一校验 c_end 令牌用）
+    app-jwt-secret: ${APP_JWT_SECRET:degel-c-end-secret-key-2024-change-in-prod}
     ignore-urls:
       - /auth/oauth/token
       - /app/
+      # 公开桶图片走 <img> 直链（无 Authorization header），必须放行；
+      # 只放行公开桶路径，私有桶仍需 token 或 presign
+      - /file/view/degel-public/
     internal-urls:
       - /admin/user/find/
       - /inner/
+      # degel-product 内部接口经网关路由后的路径（Feign 直连不走网关，不受影响）
+      - /product/inner/
+      # degel-order 内部接口经网关路由后的路径
+      - /order/inner/
     # admin-urls 为前缀匹配（startsWith），如 "*:/admin/user" 也会命中 /admin/users/export 等未来新增路径
     admin-urls:
       - "*:/admin/user"
@@ -63,6 +73,8 @@ degel:
       - "*:/admin/menu"
       - "*:/admin/shop"
       - "PUT:/product/spu/audit"
+      # ES 索引全量重建（平台管理动作）
+      - "POST:/product/spu/reindex"
       - "POST:/product/category"
       - "PUT:/product/category"
       - "DELETE:/product/category"

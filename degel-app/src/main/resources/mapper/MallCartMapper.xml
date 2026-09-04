@@ -25,4 +25,21 @@
           AND del_flag = 0
     </update>
 
+    <!--
+      插入或复活：mall_cart 有 uk_user_sku 唯一键，且下单后记录是逻辑删（del_flag=1 仍占唯一键），
+      重新加购同款若走普通 INSERT 会撞唯一键。
+      - 新记录：正常插入
+      - 已删记录：复活并重置数量（用户预期从本次数量开始，不叠加旧值）
+      注意：自定义 XML 语句不走 MetaObjectHandler，时间列需显式写 NOW()。
+      update_time 的 ON UPDATE CURRENT_TIMESTAMP 在 ON DUPLICATE KEY UPDATE 显式赋值时不触发，须手动写。
+    -->
+    <insert id="insertOrRevive">
+        INSERT INTO mall_cart (user_id, spu_id, sku_id, quantity, create_time, update_time)
+        VALUES (#{userId}, #{spuId}, #{skuId}, #{quantity}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            del_flag = 0,
+            quantity = #{quantity},
+            update_time = NOW()
+    </insert>
+
 </mapper>

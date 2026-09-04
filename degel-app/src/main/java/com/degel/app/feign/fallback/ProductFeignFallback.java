@@ -1,6 +1,6 @@
 package com.degel.app.feign.fallback;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.app.feign.ProductFeignClient;
 import com.degel.app.vo.CategoryTreeVO;
 import com.degel.app.vo.ProductSkuVO;
@@ -26,8 +26,9 @@ public class ProductFeignFallback implements ProductFeignClient {
     }
 
     @Override
-    public R<IPage<ProductSpuVO>> getSpuPage(Long categoryId, String keyword, Integer page,
-                                              Integer pageSize, Integer status, Integer auditStatus) {
+    public R<Page<ProductSpuVO>> getSpuPage(Long categoryId, String keyword, Integer page,
+                                            Integer pageSize, Integer status, Integer auditStatus,
+                                            String sort) {
         log.error("[ProductFeignFallback] getSpuPage 降级");
         return R.fail(50001, "商品列表服务暂不可用");
     }

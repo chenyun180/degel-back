@@ -1,14 +1,18 @@
 package com.degel.app.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.app.feign.ProductFeignClient;
 import com.degel.app.service.impl.ProductServiceImpl;
 import com.degel.app.vo.AppSkuVO;
 import com.degel.app.vo.AppSpuDetailVO;
+import com.degel.app.vo.AppSpuListVO;
 import com.degel.app.vo.CategoryTreeVO;
 import com.degel.app.vo.ProductSkuVO;
 import com.degel.app.vo.ProductSpuVO;
+import com.degel.common.core.Constants;
 import com.degel.common.core.R;
-import com.degel.common.core.exception.BusinessException;
+import com.degel.app.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +42,9 @@ import static org.mockito.Mockito.*;
  * 2. getCategoryTree_cacheMiss_shouldCallFeignAndCache — 缓存未命中调Feign并写缓存
  * 3. getProductDetail_notOnSale_shouldThrow40400     — 下架商品返回404
  * 4. getProductDetail_success_shouldReturnMergedVO   — 正常返回SPU+SKU合并VO
+ * 5. getRecommendList_cacheMiss_shouldCallFeignWithSaleSort — 推荐走销量排序并写缓存
+ * 6. getProductDetail_pendingAudit_shouldThrow40400  — 待审核商品详情抛40400
+ * 7. getRecommendList_cacheHit_shouldNotCallFeign    — 推荐缓存命中不调Feign
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ProductServiceImpl 单元测试")
@@ -132,12 +139,12 @@ class ProductServiceTest {
         // given: Redis 中无 SPU 缓存
         when(valueOperations.get(CACHE_SPU_PREFIX + spuId)).thenReturn(null);
 
-        // Feign 返回 status=0（已下架）的 SPU
+        // Feign 返回 status=0（已下架）、审核已通过的 SPU
         ProductSpuVO offlineSpu = new ProductSpuVO();
         offlineSpu.setId(spuId);
         offlineSpu.setName("已下架商品");
         offlineSpu.setStatus(0);        // 下架
-        offlineSpu.setAuditStatus(1);
+        offlineSpu.setAuditStatus(Constants.AUDIT_APPROVED);
         when(productFeignClient.getSpuDetail(spuId)).thenReturn(R.ok(offlineSpu));
 
         // SKU 查询也需要 mock（并发调用）
@@ -176,7 +183,7 @@ class ProductServiceTest {
         spu.setSaleCount(200);
         spu.setViewCount(5000);
         spu.setStatus(1);
-        spu.setAuditStatus(1);
+        spu.setAuditStatus(Constants.AUDIT_APPROVED);
         when(productFeignClient.getSpuDetail(spuId)).thenReturn(R.ok(spu));
 
         // 构造两个 SKU
@@ -214,7 +221,7 @@ class ProductServiceTest {
         // SKU1 有库存 → soldOut=false
         AppSkuVO appSku1 = skuList.stream()
                 .filter(s -> s.getSkuId().equals(1001L))
-                .findFirst().orElseThrow();
+                .findFirst().orElseThrow(() -> new AssertionError("SKU 1001 未找到"));
         assertThat(appSku1.getPrice()).isEqualByComparingTo("99.00");
         assertThat(appSku1.getStock()).isEqualTo(50);
         assertThat(appSku1.getSoldOut()).isFalse();
@@ -222,7 +229,7 @@ class ProductServiceTest {
         // SKU2 库存=0 → soldOut=true
         AppSkuVO appSku2 = skuList.stream()
                 .filter(s -> s.getSkuId().equals(1002L))
-                .findFirst().orElseThrow();
+                .findFirst().orElseThrow(() -> new AssertionError("SKU 1002 未找到"));
         assertThat(appSku2.getPrice()).isEqualByComparingTo("109.00");
         assertThat(appSku2.getStock()).isEqualTo(0);
         assertThat(appSku2.getSoldOut()).isTrue();
@@ -230,6 +237,97 @@ class ProductServiceTest {
         // SPU 写缓存被调用一次（5 min）
         verify(valueOperations, times(1))
                 .set(eq(CACHE_SPU_PREFIX + spuId), any(), eq(5L), eq(TimeUnit.MINUTES));
+    }
+
+    // ======================================================================
+    // 用例 5：getRecommendList — 缓存未命中，调 Feign(sort=sale) 并写缓存
+    // ======================================================================
+
+    @Test
+    @DisplayName("getRecommendList_cacheMiss_shouldCallFeignWithSaleSort — 推荐走销量排序并写缓存")
+    void getRecommendList_cacheMiss_shouldCallFeignWithSaleSort() {
+        // given: 缓存 miss
+        when(valueOperations.get("product:recommend:page:1:size:10")).thenReturn(null);
+        ProductSpuVO spu = new ProductSpuVO();
+        spu.setId(7L);
+        spu.setName("男士T恤");
+        spu.setMainImage("spu7.jpg");
+        spu.setMinPrice(new BigDecimal("59"));
+        spu.setSaleCount(100);
+        Page<ProductSpuVO> feignPage = new Page<>(1, 10, 1);
+        feignPage.setRecords(Collections.singletonList(spu));
+        when(productFeignClient.getSpuPage(null, null, 1, 10, 1, Constants.AUDIT_APPROVED, "sale"))
+                .thenReturn(R.ok(feignPage));
+
+        // when
+        IPage<AppSpuListVO> result = productService.getRecommendList(1, 10);
+
+        // then: Feign 收到 sort=sale；结果字段转换正确；写缓存 TTL 5min
+        verify(productFeignClient).getSpuPage(null, null, 1, 10, 1, Constants.AUDIT_APPROVED, "sale");
+        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords().get(0).getSpuId()).isEqualTo(7L);
+        assertThat(result.getRecords().get(0).getSaleCount()).isEqualTo(100);
+        verify(valueOperations).set(eq("product:recommend:page:1:size:10"), any(), eq(5L), eq(TimeUnit.MINUTES));
+    }
+
+    // ======================================================================
+    // 用例 6：getProductDetail — 待审核商品（auditStatus=1），应抛出 BusinessException(40400)
+    // ======================================================================
+
+    @Test
+    @DisplayName("getProductDetail_pendingAudit_shouldThrow40400 — 待审核(auditStatus=1)商品抛出40400业务异常")
+    void getProductDetail_pendingAudit_shouldThrow40400() {
+        final Long spuId = 888L;
+
+        // given: Redis 中无 SPU 缓存
+        when(valueOperations.get(CACHE_SPU_PREFIX + spuId)).thenReturn(null);
+
+        // Feign 返回 status=1（上架）但 auditStatus=1（待审核）的 SPU
+        ProductSpuVO pendingSpu = new ProductSpuVO();
+        pendingSpu.setId(spuId);
+        pendingSpu.setName("待审核商品");
+        pendingSpu.setStatus(1);                    // 上架
+        pendingSpu.setAuditStatus(Constants.AUDIT_PENDING);  // 待审核
+        when(productFeignClient.getSpuDetail(spuId)).thenReturn(R.ok(pendingSpu));
+
+        // SKU 查询也需要 mock（并发调用）
+        when(productFeignClient.getSkuList(spuId)).thenReturn(R.ok(Collections.emptyList()));
+
+        // when & then
+        assertThatThrownBy(() -> productService.getProductDetail(spuId))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    BusinessException be = (BusinessException) ex;
+                    assertThat(be.getCode()).isEqualTo(40400);
+                });
+    }
+
+    // ======================================================================
+    // 用例 7：getRecommendList — 缓存命中，不应调用 Feign
+    // ======================================================================
+
+    @Test
+    @DisplayName("getRecommendList_cacheHit_shouldNotCallFeign — 推荐缓存命中时直接返回缓存数据，不调用Feign")
+    void getRecommendList_cacheHit_shouldNotCallFeign() {
+        // given: Redis 返回已缓存的推荐分页
+        AppSpuListVO vo = new AppSpuListVO();
+        vo.setSpuId(7L);
+        vo.setName("男士T恤");
+        vo.setSaleCount(100);
+        Page<AppSpuListVO> cachedPage = new Page<>(1, 10, 1);
+        cachedPage.setRecords(Collections.singletonList(vo));
+        when(valueOperations.get("product:recommend:page:1:size:10")).thenReturn(cachedPage);
+
+        // when
+        IPage<AppSpuListVO> result = productService.getRecommendList(1, 10);
+
+        // then: Feign 不被调用，不写缓存
+        verify(productFeignClient, never()).getSpuPage(any(), any(), any(), any(), any(), any(), any());
+        verify(valueOperations, never()).set(any(), any(), anyLong(), any(TimeUnit.class));
+        // 结果非空且包含正确数据
+        assertThat(result.getRecords()).hasSize(1);
+        assertThat(result.getRecords().get(0).getSpuId()).isEqualTo(7L);
+        assertThat(result.getRecords().get(0).getSaleCount()).isEqualTo(100);
     }
 
     // ======================================================================

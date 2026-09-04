@@ -84,7 +84,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
 
     @Override
     public IPage<AfterSaleListVO> listAfterSale(Long userId, Integer page, Integer size) {
-        R<IPage<AfterSaleInfoVO>> resp = orderFeignClient.pageAfterSales(userId, null, page, size);
+        R<Page<AfterSaleInfoVO>> resp = orderFeignClient.pageAfterSales(userId, null, page, size);
         if (resp == null || resp.getCode() != 200 || resp.getData() == null) {
             throw BusinessException.of(50001, "查询售后列表失败，请稍后重试");
         }
@@ -175,12 +175,18 @@ public class AfterSaleServiceImpl implements AfterSaleService {
     // 工具方法
     // =========================================================
 
+    /**
+     * 售后状态描述，与 degel-order AfterSaleHandleVo 的状态机对齐：
+     * 0 待审核 → agree(退货型)=1 退货中 → 商家确认收货=3 已完成；
+     * agree(退款型) 直接 3；reject=5 已拒绝
+     */
     private String getAfterSaleStatusDesc(Integer status) {
         if (status == null) return "未知";
         switch (status) {
             case 0: return "待审核";
-            case 1: return "已同意";
-            case 2: return "已拒绝";
+            case 1: return "退货中";
+            case 3: return "已完成";
+            case 5: return "已拒绝";
             default: return "未知";
         }
     }

@@ -45,4 +45,16 @@ public class FileController {
             @RequestParam(value = "disposition", defaultValue = "inline") String disposition) {
         return R.ok(fileService.presign(bucket, objectName, expires, disposition));
     }
+
+    /**
+     * 图片/文件展示：GET /file/view/{bucket}/{objectName}
+     * 前端用相对路径（经网关），库里的 objectKey 不含 host，环境无关。
+     */
+    @GetMapping("/view/{bucket}/{objectName:.+}")
+    public void view(
+            @PathVariable String bucket,
+            @PathVariable String objectName,
+            javax.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        fileService.writeTo(bucket, objectName, response);
+    }
 }

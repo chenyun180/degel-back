@@ -40,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final AppJwtConfig appJwtConfig;
     private final PasswordEncoder passwordEncoder;
     private final RestTemplate restTemplate;
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
 
     @PostConstruct
     public void validateSecret() {
@@ -76,9 +77,11 @@ public class AuthServiceImpl implements AuthService {
             user.setOpenid(openid);
             user.setNickname(req.getNickname());
             user.setAvatar(req.getAvatar());
+            // 可选手机号：微信注册时即写入，后续可用 H5 手机号+密码登录同一账户
+            user.setPhone(req.getPhone());
             user.setStatus(0);
             mallUserMapper.insert(user);
-            log.info("微信新用户注册成功, openid={}, userId={}", openid, user.getId());
+            log.info("微信新用户注册成功, openid={}, userId={}, hasPhone={}", openid, user.getId(), req.getPhone() != null);
         } else {
             // Step 4: 封禁校验
             if (Integer.valueOf(1).equals(user.getStatus())) {
@@ -129,6 +132,43 @@ public class AuthServiceImpl implements AuthService {
                 .nickname(user.getNickname())
                 .avatar(user.getAvatar())
                 .build();
+    }
+
+    // ===== 登出 =====
+
+    @Override
+    public void logout(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            // 无令牌的登出视为已登出，静默成功（幂等）
+            return;
+        }
+        String token = authorizationHeader.substring(7);
+        try {
+            byte[] keyBytes = appJwtConfig.getSecret().getBytes(StandardCharsets.UTF_8);
+            java.security.Key key = io.jsonwebtoken.security.Keys.hmacShaKeyFor(keyBytes);
+            io.jsonwebtoken.Claims claims = io.jsonwebtoken.Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+
+            String jti = claims.getId();
+            if (jti == null) {
+                // 无 jti 的存量 token 无法定位拉黑，靠自然过期
+                log.info("登出令牌无 jti，跳过黑名单, userId={}", claims.getSubject());
+                return;
+            }
+            long remainingMs = claims.getExpiration().getTime() - System.currentTimeMillis();
+            if (remainingMs <= 0) {
+                return;
+            }
+            String blacklistKey = "app:blacklist:" + jti;
+            stringRedisTemplate.opsForValue().set(blacklistKey, "1", remainingMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            log.info("登出成功，令牌已拉黑, userId={}, jti={}, ttl={}ms", claims.getSubject(), jti, remainingMs);
+        } catch (Exception e) {
+            // 无效/过期令牌的登出直接成功（幂等），不暴露令牌状态
+            log.info("登出时令牌解析失败，按已登出处理: {}", e.getMessage());
+        }
     }
 
     // ===== 私有方法 =====
@@ -192,6 +232,8 @@ public class AuthServiceImpl implements AuthService {
 
         return Jwts.builder()
                 .setClaims(claims)
+                // jti：令牌唯一标识，登出/封禁时据此写入 Redis 黑名单（网关与 AppSecurityFilter 校验）
+                .setId(java.util.UUID.randomUUID().toString())
                 .setSubject(String.valueOf(user.getId()))
                 .setIssuedAt(new Date(nowMs))
                 .setExpiration(new Date(expMs))

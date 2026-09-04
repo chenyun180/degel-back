@@ -40,4 +40,15 @@ public class AuthController {
     public R<WxLoginVO> login(@Valid @RequestBody LoginReqVO req) {
         return R.ok(authService.login(req));
     }
+
+    /**
+     * 登出：将当前令牌拉黑至剩余有效时长（幂等，无令牌也返回成功）
+     * DELETE /app/auth/token
+     */
+    @org.springframework.web.bind.annotation.DeleteMapping("/token")
+    public R<Void> logout(@org.springframework.web.bind.annotation.RequestHeader(
+            value = "Authorization", required = false) String authorization) {
+        authService.logout(authorization);
+        return R.ok();
+    }
 }

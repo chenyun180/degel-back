@@ -24,4 +24,10 @@ public interface AuthService {
      * 3. 签发 C端 JWT
      */
     WxLoginVO login(LoginReqVO req);
+
+    /**
+     * 登出：将当前令牌的 jti 写入 Redis 黑名单至剩余有效时长
+     * @param authorizationHeader 请求头 Authorization（Bearer xxx），缺失时静默成功
+     */
+    void logout(String authorizationHeader);
 }

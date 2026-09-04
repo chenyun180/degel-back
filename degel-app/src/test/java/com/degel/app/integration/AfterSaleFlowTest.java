@@ -310,7 +310,7 @@ class AfterSaleFlowTest {
         // 构造 status=1 的售后单
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 1);
 
-        IPage<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
+        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
         page.setRecords(Collections.singletonList(afterSaleInfo));
         when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
                 .thenReturn(R.ok(page));
@@ -357,7 +357,7 @@ class AfterSaleFlowTest {
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 0); // status=0
 
-        IPage<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
+        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
         page.setRecords(Collections.singletonList(afterSaleInfo));
         when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
                 .thenReturn(R.ok(page));
@@ -383,7 +383,7 @@ class AfterSaleFlowTest {
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 2); // status=2
 
-        IPage<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
+        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
         page.setRecords(Collections.singletonList(afterSaleInfo));
         when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
                 .thenReturn(R.ok(page));
@@ -406,7 +406,7 @@ class AfterSaleFlowTest {
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 1);
 
-        IPage<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
+        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
         page.setRecords(Collections.singletonList(afterSaleInfo));
         when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
                 .thenReturn(R.ok(page));
@@ -441,7 +441,7 @@ class AfterSaleFlowTest {
         // 真实 userId=1 的售后单
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, actualUserId, 1);
 
-        IPage<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
+        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
         page.setRecords(Collections.singletonList(afterSaleInfo));
         // 注意：pageAfterSales 用 attackerUserId 查询（攻击者看自己的列表，不包含目标售后单）
         when(orderFeignClient.pageAfterSales(eq(attackerUserId), isNull(), eq(1), eq(1000)))
@@ -468,7 +468,7 @@ class AfterSaleFlowTest {
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 1);
 
-        IPage<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
+        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
         page.setRecords(Collections.singletonList(afterSaleInfo));
         when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
                 .thenReturn(R.ok(page));

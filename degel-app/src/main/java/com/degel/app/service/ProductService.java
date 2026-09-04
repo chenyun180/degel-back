@@ -33,4 +33,12 @@ public interface ProductService {
      * @param spuId SPU ID
      */
     AppSpuDetailVO getProductDetail(Long spuId);
+
+    /**
+     * 推荐商品列表（简单规则：上架且审核通过，按销量倒序，缓存 TTL=5min）
+     *
+     * @param page     页码
+     * @param pageSize 每页大小
+     */
+    IPage<AppSpuListVO> getRecommendList(Integer page, Integer pageSize);
 }

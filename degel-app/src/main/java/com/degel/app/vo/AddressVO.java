@@ -1,5 +1,7 @@
 package com.degel.app.vo;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 
 /**
@@ -8,6 +10,7 @@ import lombok.Data;
 @Data
 public class AddressVO {
 
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
     private Long userId;
     private String name;
@@ -16,6 +19,10 @@ public class AddressVO {
     private String city;
     private String district;
     private String detail;
+    /** 经度（GCJ-02，高德地图选点，可为空） */
+    private java.math.BigDecimal longitude;
+    /** 纬度（GCJ-02，高德地图选点，可为空） */
+    private java.math.BigDecimal latitude;
     /** 是否默认：0否 1是 */
     private Integer isDefault;
 

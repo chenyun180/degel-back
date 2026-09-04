@@ -21,6 +21,7 @@ public class OrderDetailVO {
     private String statusDesc;
     private String remark;
     private String cancelReason;
+    private Long payLogId;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

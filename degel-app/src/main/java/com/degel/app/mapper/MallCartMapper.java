@@ -31,4 +31,11 @@ public interface MallCartMapper extends BaseMapper<MallCart> {
      * @return 影响行数
      */
     int incrementQuantity(@Param("id") Long id, @Param("userId") Long userId, @Param("quantity") Integer quantity);
+
+    /**
+     * 插入或复活购物车记录（uk_user_sku 唯一键 + 逻辑删共存场景）：
+     * 新记录正常插入；撞到已逻辑删的旧记录则复活并重置数量
+     */
+    int insertOrRevive(@Param("userId") Long userId, @Param("spuId") Long spuId,
+                       @Param("skuId") Long skuId, @Param("quantity") Integer quantity);
 }

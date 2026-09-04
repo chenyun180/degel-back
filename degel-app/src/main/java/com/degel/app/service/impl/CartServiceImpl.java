@@ -33,6 +33,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CartServiceImpl implements CartService {
 
+    @org.springframework.beans.factory.annotation.Value("${degel.app.file-base-url}")
+    private String fileBaseUrl;
+
     private final MallCartMapper mallCartMapper;
     private final ProductFeignClient productFeignClient;
 
@@ -50,12 +53,11 @@ public class CartServiceImpl implements CartService {
             throw new BusinessException(40001, "SKU不存在或已下架");
         }
 
-        // 2. 查询该用户购物车中是否已有该 SKU
+        // 2. 查询该用户购物车中是否已有该 SKU（BaseEntity.delFlag 带 @TableLogic，自动只查未删记录）
         MallCart existCart = mallCartMapper.selectOne(
                 new LambdaQueryWrapper<MallCart>()
                         .eq(MallCart::getUserId, userId)
                         .eq(MallCart::getSkuId, skuId)
-                        .eq(MallCart::getDelFlag, 0)
         );
 
         if (existCart != null) {
@@ -66,16 +68,12 @@ public class CartServiceImpl implements CartService {
             }
             mallCartMapper.incrementQuantity(existCart.getId(), userId, quantity);
         } else {
-            // 3b. 不存在 → INSERT
+            // 3b. 不存在（或已逻辑删）→ INSERT ON DUPLICATE KEY 复活
+            //     mall_cart 有 uk_user_sku 唯一键，已逻辑删记录仍占用，普通 INSERT 会撞键
             if (sku.getStock() != null && quantity > sku.getStock()) {
                 throw new BusinessException(40002, "超出库存上限");
             }
-            MallCart cart = new MallCart();
-            cart.setUserId(userId);
-            cart.setSpuId(sku.getSpuId());
-            cart.setSkuId(skuId);
-            cart.setQuantity(quantity);
-            mallCartMapper.insert(cart);
+            mallCartMapper.insertOrRevive(userId, sku.getSpuId(), skuId, quantity);
         }
     }
 
@@ -218,7 +216,7 @@ public class CartServiceImpl implements CartService {
             item.setSpuId(cart.getSpuId());
             item.setSpuName(spuName);
             item.setSkuSpec(skuSpec);
-            item.setSkuImage(sku.getImage());
+            item.setSkuImage(fileUrl(sku.getImage()));
             item.setPrice(sku.getPrice());
             item.setQuantity(cart.getQuantity());
             item.setStock(sku.getStock());
@@ -318,7 +316,7 @@ public class CartServiceImpl implements CartService {
         }
 
         if (sku != null) {
-            item.setSkuImage(sku.getImage());
+            item.setSkuImage(fileUrl(sku.getImage()));
             item.setPrice(sku.getPrice());
             item.setStock(sku.getStock());
             item.setSkuSpec(parseSkuSpec(sku.getSpecData()));
@@ -352,5 +350,16 @@ public class CartServiceImpl implements CartService {
         } catch (Exception e) {
             return specDataJson;
         }
+    }
+
+    /** 图片相对路径拼完整 URL（存储为裸 key，展示时补 file-base-url 前缀） */
+    private String fileUrl(String key) {
+        if (key == null || key.isEmpty()) {
+            return key;
+        }
+        if (key.startsWith("http://") || key.startsWith("https://")) {
+            return key;
+        }
+        return fileBaseUrl + "/file/view/" + key;
     }
 }

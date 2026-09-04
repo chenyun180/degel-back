@@ -50,6 +50,8 @@ public class AddressServiceImpl implements AddressService {
         address.setCity(req.getCity());
         address.setDistrict(req.getDistrict());
         address.setDetail(req.getDetail());
+        address.setLongitude(req.getLongitude());
+        address.setLatitude(req.getLatitude());
         address.setIsDefault(isFirstAddress ? 1 : 0);
         address.setDelFlag(0);
         address.setCreateTime(LocalDateTime.now());
@@ -86,6 +88,12 @@ public class AddressServiceImpl implements AddressService {
         }
         if (StringUtils.hasText(req.getDetail())) {
             address.setDetail(req.getDetail());
+        }
+        if (req.getLongitude() != null) {
+            address.setLongitude(req.getLongitude());
+        }
+        if (req.getLatitude() != null) {
+            address.setLatitude(req.getLatitude());
         }
         address.setUpdateTime(LocalDateTime.now());
 
@@ -147,7 +155,14 @@ public class AddressServiceImpl implements AddressService {
         return addresses.stream().map(this::toVO).collect(Collectors.toList());
     }
 
-    // ===== A-09: PUT /app/user/address/{id}/default =====
+    // ===== A-09: GET /app/user/address/{id} =====
+
+    @Override
+    public AddressVO get(Long userId, Long addressId) {
+        return toVO(getAndValidate(userId, addressId));
+    }
+
+    // ===== A-10: PUT /app/user/address/{id}/default =====
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -212,6 +227,8 @@ public class AddressServiceImpl implements AddressService {
         vo.setCity(address.getCity());
         vo.setDistrict(address.getDistrict());
         vo.setDetail(address.getDetail());
+        vo.setLongitude(address.getLongitude());
+        vo.setLatitude(address.getLatitude());
         vo.setIsDefault(address.getIsDefault());
         // fullAddress 由 AddressVO.getFullAddress() 动态拼接
         return vo;

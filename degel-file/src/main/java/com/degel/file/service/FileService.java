@@ -35,7 +35,8 @@ public class FileService {
 
     /**
      * 上传文件。
-     * 公开 bucket 返回永久访问 URL；私有 bucket 返回 objectName。
+     * 统一返回 objectKey（bucket/objectName），不含 host——环境差异由配置承担，库里不落绝对 URL。
+     * 展示时用 GET /file/view/{objectKey}（走网关相对路径），或由调用方按配置拼公网地址。
      */
     public String upload(MultipartFile file, String bucketType) throws IOException {
         String bucket = resolveBucket(bucketType);
@@ -49,10 +50,37 @@ public class FileService {
                         .build(),
                 RequestBody.fromBytes(file.getBytes()));
 
-        if ("public".equals(bucketType)) {
-            return minioProperties.getEndpoint() + "/" + bucket + "/" + objectName;
+        return bucket + "/" + objectName;
+    }
+
+    /**
+     * 把对象流式写入 HttpServletResponse（GET /file/view/{bucket}/{objectName}）。
+     * 前端用相对路径经网关访问，host 完全不出现在任何 URL 里。
+     */
+    public void writeTo(String bucket, String objectName, javax.servlet.http.HttpServletResponse response) throws IOException {
+        // 只允许访问配置中声明的两个 bucket，防止任意 bucket 探测
+        if (!bucket.equals(minioProperties.getPublicBucket()) && !bucket.equals(minioProperties.getPrivateBucket())) {
+            response.sendError(javax.servlet.http.HttpServletResponse.SC_NOT_FOUND);
+            return;
         }
-        return objectName;
+        try (software.amazon.awssdk.core.ResponseInputStream<GetObjectResponse> in =
+                     s3Client.getObject(GetObjectRequest.builder().bucket(bucket).key(objectName).build())) {
+            GetObjectResponse meta = in.response();
+            if (meta.contentType() != null) {
+                response.setContentType(meta.contentType());
+            }
+            if (meta.contentLength() != null) {
+                response.setContentLength(meta.contentLength().intValue());
+            }
+            byte[] buffer = new byte[8192];
+            int len;
+            java.io.OutputStream out = response.getOutputStream();
+            while ((len = in.read(buffer)) > 0) {
+                out.write(buffer, 0, len);
+            }
+        } catch (NoSuchKeyException e) {
+            response.sendError(javax.servlet.http.HttpServletResponse.SC_NOT_FOUND);
+        }
     }
 
     /**

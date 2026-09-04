@@ -45,6 +45,12 @@ public class MallAddress implements Serializable {
     /** 详细地址 */
     private String detail;
 
+    /** 经度（GCJ-02 火星坐标系，来源高德地图选点，可为空） */
+    private java.math.BigDecimal longitude;
+
+    /** 纬度（GCJ-02 火星坐标系，来源高德地图选点，可为空） */
+    private java.math.BigDecimal latitude;
+
     /**
      * 是否默认地址
      * 0 = 否

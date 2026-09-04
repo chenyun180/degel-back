@@ -53,37 +53,53 @@ import static org.mockito.Mockito.*;
 class AuthFlowTest {
 
     // =========================================================
-    // AUTH-01: AppSecurityFilter finally 块清理 UserContext
+    // AUTH-01: AppSecurityFilter（JWT 解析 + UserContext + finally 清理）
+    // 2026-08-26 起 C 端 JWT 由 degel-app 自行解析（网关对 /app/** 白名单放行）
     // =========================================================
 
+    private static final String TEST_SECRET = "degel-app-jwt-secret-key-32bytes!!";
+
+    private AppSecurityFilter newFilter() {
+        AppJwtConfig jwtConfig = new AppJwtConfig();
+        jwtConfig.setSecret(TEST_SECRET);
+        jwtConfig.setExpiration(604800L);
+        return new AppSecurityFilter(jwtConfig);
+    }
+
+    private String buildToken(long userId) {
+        byte[] keyBytes = TEST_SECRET.getBytes(StandardCharsets.UTF_8);
+        Key key = Keys.hmacShaKeyFor(keyBytes);
+        long nowMs = System.currentTimeMillis();
+        java.util.Map<String, Object> claims = new java.util.HashMap<>();
+        claims.put("type", "c_end");
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(String.valueOf(userId))
+                .setIssuedAt(new java.util.Date(nowMs))
+                .setExpiration(new java.util.Date(nowMs + 604800L * 1000L))
+                .signWith(key, io.jsonwebtoken.SignatureAlgorithm.HS256)
+                .compact();
+    }
+
     /**
-     * [AUTH-01-T1] 正常请求：携带有效 X-User-Id header，
-     * 过滤链执行后 UserContext 必须被清理（防线程池脏数据）
-     *
-     * 验证代码路径：AppSecurityFilter.java:40-43
-     *   finally {
-     *     UserContext.clear(); // ← 必须被调用
-     *   }
+     * [AUTH-01-T1] 受保护路径携带有效 Bearer token：过滤链中 UserContext 已设置，执行后清理
      */
     @Test
-    @DisplayName("[AUTH-01-T1] 正常请求后 UserContext 必须被 finally 清理")
-    void testAppSecurityFilter_clearsUserContextInFinally_normalRequest()
+    @DisplayName("[AUTH-01-T1] 有效 token 注入 UserContext，请求结束后 finally 清理")
+    void testAppSecurityFilter_validToken_setsAndClearsContext()
             throws ServletException, IOException {
 
-        AppSecurityFilter filter = new AppSecurityFilter();
+        AppSecurityFilter filter = newFilter();
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/app/cart");
+        request.addHeader("Authorization", "Bearer " + buildToken(12345L));
         MockHttpServletResponse response = new MockHttpServletResponse();
 
-        // 携带合法 userId header
-        request.addHeader("X-User-Id", "12345");
-
-        // 验证过滤器执行中 UserContext 已设置
         MockFilterChain chain = new MockFilterChain() {
             @Override
             public void doFilter(javax.servlet.ServletRequest req,
                                  javax.servlet.ServletResponse res)
                     throws IOException, ServletException {
-                // 在过滤链中 UserId 应已注入
                 assertThat(UserContext.getUserId())
                         .as("过滤链执行中 UserContext 应持有 userId=12345")
                         .isEqualTo(12345L);
@@ -92,84 +108,110 @@ class AuthFlowTest {
 
         filter.doFilter(request, response, chain);
 
-        // finally 执行后 UserContext 必须已清理
         assertThat(UserContext.getUserId())
                 .as("[AUTH-01] finally 块必须调用 UserContext.clear()，执行后 userId 应为 null")
                 .isNull();
     }
 
     /**
-     * [AUTH-01-T2] 异常请求：过滤链抛出异常时 finally 也必须清理 UserContext
+     * [AUTH-01-T2] 过滤链抛出异常：异常向上传播（不被过滤器吞掉），finally 仍清理 UserContext
      */
     @Test
-    @DisplayName("[AUTH-01-T2] 过滤链抛异常时 finally 仍须清理 UserContext")
-    void testAppSecurityFilter_clearsUserContextInFinally_evenOnException()
+    @DisplayName("[AUTH-01-T2] 过滤链抛异常时异常传播，finally 仍清理 UserContext")
+    void testAppSecurityFilter_exceptionPropagates_andContextCleared()
             throws ServletException, IOException {
 
-        AppSecurityFilter filter = new AppSecurityFilter();
+        AppSecurityFilter filter = newFilter();
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/app/cart");
+        request.addHeader("Authorization", "Bearer " + buildToken(99999L));
         MockHttpServletResponse response = new MockHttpServletResponse();
-        request.addHeader("X-User-Id", "99999");
 
         MockFilterChain chain = new MockFilterChain() {
             @Override
             public void doFilter(javax.servlet.ServletRequest req,
                                  javax.servlet.ServletResponse res) {
-                // 模拟下游抛出 RuntimeException
                 throw new RuntimeException("模拟业务异常");
             }
         };
 
-        // 期望异常传播出来
         assertThrows(RuntimeException.class,
                 () -> filter.doFilter(request, response, chain));
 
-        // 即使抛异常，finally 也应清理 UserContext
         assertThat(UserContext.getUserId())
                 .as("[AUTH-01] 即使异常，finally 必须调用 UserContext.clear()")
                 .isNull();
     }
 
     /**
-     * [AUTH-01-T3] 无 X-User-Id header：不设置 UserContext，直接放行，finally 清理无副作用
+     * [AUTH-01-T3] 公开路径无 token：直接放行，UserContext 保持 null
      */
     @Test
-    @DisplayName("[AUTH-01-T3] 无 X-User-Id header 时不设置 UserContext，放行后仍正常清理")
-    void testAppSecurityFilter_noUserIdHeader_contextRemainsNull()
+    @DisplayName("[AUTH-01-T3] 公开路径无 token 时放行，UserContext 为 null")
+    void testAppSecurityFilter_publicPathNoToken_passesThrough()
             throws ServletException, IOException {
 
-        AppSecurityFilter filter = new AppSecurityFilter();
+        AppSecurityFilter filter = newFilter();
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/app/product/list");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        // 不添加 X-User-Id header
 
         MockFilterChain chain = new MockFilterChain();
         filter.doFilter(request, response, chain);
 
         assertThat(UserContext.getUserId())
-                .as("[AUTH-01] 无 header 时 UserContext 应为 null")
+                .as("[AUTH-01] 公开路径无 token 时 UserContext 应为 null")
+                .isNull();
+        assertThat(response.getStatus())
+                .as("[AUTH-01] 公开路径应放行（非 401）")
+                .isNotEqualTo(401);
+    }
+
+    /**
+     * [AUTH-01-T4] 受保护路径无 token：返回 401 且不进入过滤链
+     */
+    @Test
+    @DisplayName("[AUTH-01-T4] 受保护路径无 token 返回 401，不进入过滤链")
+    void testAppSecurityFilter_protectedPathNoToken_returns401()
+            throws ServletException, IOException {
+
+        AppSecurityFilter filter = newFilter();
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/app/cart");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus())
+                .as("[AUTH-01] 受保护路径无 token 应返回 401")
+                .isEqualTo(401);
+        assertThat(UserContext.getUserId())
+                .as("[AUTH-01] 拒绝请求时 UserContext 应为 null")
                 .isNull();
     }
 
     /**
-     * [AUTH-01-T4] 非法 X-User-Id（非数字）：warn 日志后放行，UserContext 保持 null，finally 清理正常
+     * [AUTH-01-T5] 非法 token（错误签名）：返回 401，不进入过滤链
      */
     @Test
-    @DisplayName("[AUTH-01-T4] X-User-Id 非数字时记录 warn，UserContext 不设置，finally 正常清理")
-    void testAppSecurityFilter_illegalUserIdHeader_doesNotSetContext()
+    @DisplayName("[AUTH-01-T5] 非法 token 返回 401，不进入过滤链")
+    void testAppSecurityFilter_invalidToken_returns401()
             throws ServletException, IOException {
 
-        AppSecurityFilter filter = new AppSecurityFilter();
+        AppSecurityFilter filter = newFilter();
         MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/app/cart");
+        // 用另一个密钥签发，签名校验必须失败
+        request.addHeader("Authorization", "Bearer " + buildToken(1L) + "x");
         MockHttpServletResponse response = new MockHttpServletResponse();
-        request.addHeader("X-User-Id", "not-a-number");
 
         MockFilterChain chain = new MockFilterChain();
         filter.doFilter(request, response, chain);
 
-        assertThat(UserContext.getUserId())
-                .as("[AUTH-01] 非法 header 时 UserContext 应为 null")
-                .isNull();
+        assertThat(response.getStatus())
+                .as("[AUTH-01] 非法 token 应返回 401")
+                .isEqualTo(401);
     }
 
     // =========================================================

@@ -2,6 +2,9 @@ package com.degel.app.vo.dto;
 
 import lombok.Data;
 
+import javax.validation.constraints.DecimalMax;
+import javax.validation.constraints.DecimalMin;
+import javax.validation.constraints.Digits;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
@@ -51,4 +54,20 @@ public class AddressCreateReqVO {
     @NotBlank(message = "详细地址不能为空")
     @Size(max = 100, message = "详细地址不超过100字符")
     private String detail;
+
+    /**
+     * 经度（GCJ-02 火星坐标系，高德地图选点，可选）
+     */
+    @DecimalMin(value = "-180", message = "经度不合法")
+    @DecimalMax(value = "180", message = "经度不合法")
+    @Digits(integer = 3, fraction = 6, message = "经度最多6位小数")
+    private java.math.BigDecimal longitude;
+
+    /**
+     * 纬度（GCJ-02 火星坐标系，高德地图选点，可选）
+     */
+    @DecimalMin(value = "-90", message = "纬度不合法")
+    @DecimalMax(value = "90", message = "纬度不合法")
+    @Digits(integer = 2, fraction = 6, message = "纬度最多6位小数")
+    private java.math.BigDecimal latitude;
 }

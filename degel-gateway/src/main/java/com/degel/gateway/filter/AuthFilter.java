@@ -38,6 +38,9 @@ public class AuthFilter implements GlobalFilter, Ordered {
 
     private static final String BLACKLIST_PREFIX = "auth:blacklist:";
 
+    /** C 端令牌黑名单前缀（与 degel-app AppSecurityFilter 一致） */
+    private static final String APP_BLACKLIST_PREFIX = "app:blacklist:";
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
@@ -68,25 +71,57 @@ public class AuthFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange, "缺少访问令牌");
         }
 
-        Claims claims;
+        // 先按管理端密钥解析；解析失败且配置了 C 端密钥时，再按 c_end 令牌尝试。
+        // 双变量 final 以便 lambda 捕获：adminOk/cEndOk 互斥，claims 二选一非空
+        Claims parsedClaims = null;
+        boolean isAdminToken = false;
+        boolean isCEndToken = false;
         try {
-            claims = parseToken(token);
-        } catch (Exception e) {
-            log.warn("Token validation failed: {}", e.getMessage());
+            parsedClaims = parseToken(token);
+            isAdminToken = true;
+        } catch (Exception adminErr) {
+            if (properties.getAppJwtSecret() != null && !properties.getAppJwtSecret().isEmpty()) {
+                try {
+                    parsedClaims = parseAppToken(token);
+                    isCEndToken = true;
+                } catch (Exception appErr) {
+                    log.warn("Token validation failed (admin & c_end): {}", appErr.getMessage());
+                }
+            } else {
+                log.warn("Token validation failed: {}", adminErr.getMessage());
+            }
+        }
+
+        if (!isAdminToken && !isCEndToken) {
             return unauthorized(exchange, "无效的访问令牌");
         }
+
+        final Claims claims = parsedClaims;
+        final boolean cEndToken = isCEndToken;
 
         String jti = claims.getId();
+        // C 端令牌：无 jti 的存量 token 直接拒绝（新签发的都有），强制重新登录获取可吊销的新令牌
         if (jti == null) {
-            return unauthorized(exchange, "无效的访问令牌");
+            return unauthorized(exchange, cEndToken ? "登录已过期，请重新登录" : "无效的访问令牌");
         }
 
-        // 检查 Redis 黑名单
+        // 检查 Redis 黑名单（管理端 auth:blacklist: / C 端 app:blacklist: 前缀不同）
+        String blacklistPrefix = cEndToken ? APP_BLACKLIST_PREFIX : BLACKLIST_PREFIX;
         ServerWebExchange finalExchange = exchange;
-        return redisTemplate.hasKey(BLACKLIST_PREFIX + jti)
+        return redisTemplate.hasKey(blacklistPrefix + jti)
                 .flatMap(blacklisted -> {
                     if (Boolean.TRUE.equals(blacklisted)) {
                         return unauthorized(finalExchange, "令牌已失效，请重新登录");
+                    }
+
+                    if (cEndToken) {
+                        // C 端：sub 即 mall_user.userId，注入 X-User-Id 供下游使用；
+                        // C 端请求不做管理端 admin-urls 角色校验
+                        ServerHttpRequest mutatedRequest = finalExchange.getRequest().mutate()
+                                .header("X-User-Id", claims.getSubject())
+                                .header("X-Shop-Id", "0")
+                                .build();
+                        return chain.filter(finalExchange.mutate().request(mutatedRequest).build());
                     }
 
                     Object userId = claims.get("user_id");
@@ -125,6 +160,23 @@ public class AuthFilter implements GlobalFilter, Ordered {
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
+    }
+
+    /**
+     * 按 C 端密钥解析 c_end 令牌（网关统一校验：非 c_end 类型视为无效）
+     */
+    private Claims parseAppToken(String token) {
+        byte[] keyBytes = properties.getAppJwtSecret().getBytes(StandardCharsets.UTF_8);
+        Key key = new SecretKeySpec(keyBytes, SignatureAlgorithm.HS256.getJcaName());
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        if (!"c_end".equals(claims.get("type"))) {
+            throw new IllegalArgumentException("not a c_end token");
+        }
+        return claims;
     }
 
     private String getToken(ServerHttpRequest request) {

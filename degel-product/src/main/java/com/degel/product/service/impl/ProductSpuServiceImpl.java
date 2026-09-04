@@ -2,9 +2,15 @@ package com.degel.product.service.impl;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,9 +20,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.degel.common.core.Constants;
 import com.degel.common.core.exception.BusinessException;
+import com.degel.product.entity.ProductCategory;
 import com.degel.product.entity.ProductSku;
 import com.degel.product.entity.ProductSpu;
+import com.degel.product.es.SpuIndexEvent;
 import com.degel.product.mapper.ProductSpuMapper;
+import com.degel.product.service.IProductCategoryService;
 import com.degel.product.service.IProductSkuService;
 import com.degel.product.service.IProductSpuService;
 import com.degel.product.vo.*;
@@ -30,15 +39,29 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         implements IProductSpuService {
 
     private final IProductSkuService skuService;
+    private final IProductCategoryService categoryService;
+    /** SPU 变更 → ES 索引（事务提交后异步执行，见 SpuIndexListener） */
+    private final ApplicationEventPublisher eventPublisher;
+
+    /** 事务提交后异步同步该 SPU 的 ES 索引（可见则写，不可见则删，由 SpuIndexer 判断） */
+    private void publishIndexEvent(Long spuId) {
+        eventPublisher.publishEvent(new SpuIndexEvent(spuId, false));
+    }
 
     @Override
     public IPage<SpuListVo> pageSpu(Page<ProductSpu> page, ProductSpu query) {
+        return pageSpu(page, query, null);
+    }
+
+    @Override
+    public IPage<SpuListVo> pageSpu(Page<ProductSpu> page, ProductSpu query, String sort) {
         LambdaQueryWrapper<ProductSpu> wrapper = new LambdaQueryWrapper<>();
         if (query.getShopId() != null) {
             wrapper.eq(ProductSpu::getShopId, query.getShopId());
         }
         if (query.getCategoryId() != null) {
-            wrapper.eq(ProductSpu::getCategoryId, query.getCategoryId());
+            // 大类筛选：选中类目及其全部子孙类目都命中（选"女装"包含所有女装子类目商品）
+            wrapper.in(ProductSpu::getCategoryId, collectDescendantIds(query.getCategoryId()));
         }
         if (query.getAuditStatus() != null) {
             wrapper.eq(ProductSpu::getAuditStatus, query.getAuditStatus());
@@ -46,7 +69,18 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         if (StrUtil.isNotBlank(query.getName())) {
             wrapper.like(ProductSpu::getName, query.getName());
         }
-        wrapper.orderByDesc(ProductSpu::getCreateTime);
+        if (StrUtil.isNotBlank(query.getKeyword())) {
+            wrapper.and(w -> w.like(ProductSpu::getName, query.getKeyword())
+                    .or().like(ProductSpu::getKeyword, query.getKeyword()));
+        }
+        if (query.getStatus() != null) {
+            wrapper.eq(ProductSpu::getStatus, query.getStatus());
+        }
+        if ("sale".equals(sort)) {
+            wrapper.orderByDesc(ProductSpu::getSaleCount).orderByDesc(ProductSpu::getCreateTime);
+        } else {
+            wrapper.orderByDesc(ProductSpu::getCreateTime);
+        }
         IPage<ProductSpu> spuPage = page(page, wrapper);
 
         List<SpuListVo> records = spuPage.getRecords().stream().map(spu -> {
@@ -117,6 +151,7 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
             return sku;
         }).collect(Collectors.toList());
         skuService.saveBatch(skuList);
+        publishIndexEvent(spu.getId());
     }
 
     @Override
@@ -163,6 +198,7 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
             return sku;
         }).collect(Collectors.toList());
         skuService.saveBatch(skuList);
+        publishIndexEvent(vo.getId());
     }
 
     @Override
@@ -192,14 +228,18 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         }
         removeById(id);
         skuService.deleteBySpuId(id);
+        // 逻辑删除后 getById 查不到 → SpuIndexer 会从索引移除
+        eventPublisher.publishEvent(new SpuIndexEvent(id, true));
     }
 
     @Override
-    public void submitAudit(Long id) {
+    @Transactional(rollbackFor = Exception.class)
+    public void submitAudit(Long id, Long shopId) {
         ProductSpu spu = getById(id);
         if (spu == null) {
             throw new BusinessException("商品不存在");
         }
+        checkShopOwnership(spu, shopId, "无权提交其他店铺的商品");
         int status = spu.getAuditStatus();
         if (status != Constants.AUDIT_DRAFT && status != Constants.AUDIT_REJECTED) {
             throw new BusinessException("只有草稿或已驳回的商品才能提交审核");
@@ -209,9 +249,63 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         update.setAuditStatus(Constants.AUDIT_PENDING);
         update.setRejectReason("");
         updateById(update);
+        publishIndexEvent(id);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int submitAuditBatch(List<Long> ids, Long shopId) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException("请选择要提交审核的商品");
+        }
+        for (Long id : ids) {
+            ProductSpu spu = getById(id);
+            if (spu == null) {
+                throw new BusinessException("商品不存在: id=" + id);
+            }
+            checkShopOwnership(spu, shopId, "无权提交其他店铺的商品");
+            int status = spu.getAuditStatus();
+            if (status != Constants.AUDIT_DRAFT && status != Constants.AUDIT_REJECTED) {
+                throw new BusinessException("商品[" + spu.getName() + "]不是草稿或已驳回状态，不能提交审核");
+            }
+        }
+        for (Long id : ids) {
+            ProductSpu update = new ProductSpu();
+            update.setId(id);
+            update.setAuditStatus(Constants.AUDIT_PENDING);
+            update.setRejectReason("");
+            updateById(update);
+            publishIndexEvent(id);
+        }
+        return ids.size();
+    }
+
+    private void checkShopOwnership(ProductSpu spu, Long shopId, String message) {
+        if (shopId != null && shopId > 0 && !shopId.equals(spu.getShopId())) {
+            throw new BusinessException(message);
+        }
+    }
+
+    /** 收集类目及其全部子孙类目 id（含自身），用于大类筛选 */
+    private Set<Long> collectDescendantIds(Long categoryId) {
+        List<ProductCategory> all = categoryService.list();
+        Deque<Long> pending = new ArrayDeque<>();
+        pending.push(categoryId);
+        Set<Long> result = new HashSet<>();
+        result.add(categoryId);
+        while (!pending.isEmpty()) {
+            Long current = pending.pop();
+            for (ProductCategory c : all) {
+                if (current.equals(c.getParentId()) && result.add(c.getId())) {
+                    pending.push(c.getId());
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void audit(AuditVo auditVo, Long auditorId) {
         ProductSpu spu = getById(auditVo.getSpuId());
         if (spu == null) {
@@ -234,9 +328,11 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
             update.setRejectReason(auditVo.getRejectReason());
         }
         updateById(update);
+        publishIndexEvent(auditVo.getSpuId());
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void toggleStatus(Long id, Long shopId) {
         ProductSpu spu = getById(id);
         if (spu == null) {
@@ -251,6 +347,7 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
             update.setId(id);
             update.setStatus(0);
             updateById(update);
+            publishIndexEvent(id);
             return;
         }
 
@@ -267,9 +364,11 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         update.setId(id);
         update.setStatus(1);
         updateById(update);
+        publishIndexEvent(id);
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void updateStock(StockUpdateVo vo, Long shopId) {
         ProductSku sku = skuService.getById(vo.getSkuId());
         if (sku == null) {
@@ -283,5 +382,7 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         update.setId(vo.getSkuId());
         update.setStock(vo.getStock());
         skuService.updateById(update);
+        // totalStock 是索引冗余字段，库存变化需同步
+        publishIndexEvent(sku.getSpuId());
     }
 }

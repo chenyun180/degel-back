@@ -31,6 +31,25 @@ public class ProductCategoryServiceImpl extends ServiceImpl<ProductCategoryMappe
     }
 
     @Override
+    public List<Long> collectAncestorIds(Long categoryId) {
+        List<Long> result = new ArrayList<>();
+        if (categoryId == null) {
+            return result;
+        }
+        Map<Long, Long> parentMap = list().stream()
+                .collect(Collectors.toMap(ProductCategory::getId, c ->
+                        c.getParentId() != null ? c.getParentId() : 0L, (a, b) -> a));
+        // 类目树 3 层，guard 防脏数据成环时死循环
+        Long current = categoryId;
+        int guard = 0;
+        while (current != null && current > 0 && guard++ < 10) {
+            result.add(current);
+            current = parentMap.get(current);
+        }
+        return result;
+    }
+
+    @Override
     public List<ProductCategory> listByParentId(Long parentId) {
         return list(new LambdaQueryWrapper<ProductCategory>()
                 .eq(ProductCategory::getParentId, parentId)

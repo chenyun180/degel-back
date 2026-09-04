@@ -34,6 +34,7 @@ public class OrderInfo extends BaseEntity {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime cancelTime;
+    private String cancelReason;
 
     private String receiverName;
     private String receiverPhone;
@@ -41,6 +42,7 @@ public class OrderInfo extends BaseEntity {
     private String remark;
     private String expressCompany;
     private String expressNo;
+    private Long payLogId;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime autoCancelTime;

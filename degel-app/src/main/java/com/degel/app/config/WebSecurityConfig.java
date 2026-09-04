@@ -9,6 +9,7 @@ import org.springframework.core.Ordered;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,12 +37,13 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     }
 
     /**
-     * 注册 AppSecurityFilter，优先级最高
+     * 注册 AppSecurityFilter，优先级最高（JWT 解析 + jti 黑名单校验 + 公开路径放行）
      */
     @Bean
-    public FilterRegistrationBean<AppSecurityFilter> appSecurityFilterRegistration() {
+    public FilterRegistrationBean<AppSecurityFilter> appSecurityFilterRegistration(AppJwtConfig appJwtConfig,
+                                                                                   StringRedisTemplate redisTemplate) {
         FilterRegistrationBean<AppSecurityFilter> registration = new FilterRegistrationBean<>();
-        registration.setFilter(new AppSecurityFilter());
+        registration.setFilter(new AppSecurityFilter(appJwtConfig, redisTemplate));
         registration.addUrlPatterns("/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         registration.setName("appSecurityFilter");

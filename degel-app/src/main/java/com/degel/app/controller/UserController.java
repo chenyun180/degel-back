@@ -66,6 +66,16 @@ public class UserController {
     }
 
     /**
+     * A-09: 获取单条收货地址
+     * GET /app/user/address/{id}
+     */
+    @GetMapping("/address/{id}")
+    public R<AddressVO> getAddress(@PathVariable Long id) {
+        Long userId = UserContext.getUserId();
+        return R.ok(addressService.get(userId, id));
+    }
+
+    /**
      * A-09: 设为默认地址
      * PUT /app/user/address/{id}/default
      */

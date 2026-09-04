@@ -36,6 +36,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
 
+    @org.springframework.beans.factory.annotation.Value("${degel.app.file-base-url}")
+    private String fileBaseUrl;
+
     private final OrderFeignClient orderFeignClient;
     private final ProductFeignClient productFeignClient;
     private final StockFeignClient stockFeignClient;
@@ -275,7 +278,7 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public IPage<OrderListVO> listOrders(Long userId, Integer status, Integer page, Integer pageSize) {
-        R<IPage<OrderInfoVO>> resp = orderFeignClient.pageOrders(userId, status, page, pageSize);
+        R<Page<OrderInfoVO>> resp = orderFeignClient.pageOrders(userId, status, page, pageSize);
         if (resp == null || resp.getCode() != 200 || resp.getData() == null) {
             throw BusinessException.of(50001, "查询订单列表失败，请稍后重试");
         }
@@ -307,7 +310,7 @@ public class OrderServiceImpl implements OrderService {
             OrderItemBriefVO brief = new OrderItemBriefVO();
             brief.setSpuName(first.getSpuName());
             brief.setSkuSpec(first.getSkuSpec());
-            brief.setSkuImage(first.getSkuImage());
+            brief.setSkuImage(fileUrl(first.getSkuImage()));
             brief.setPrice(first.getPrice());
             brief.setQuantity(first.getQuantity());
             vo.setFirstItem(brief);
@@ -352,6 +355,7 @@ public class OrderServiceImpl implements OrderService {
         vo.setRemark(info.getRemark());
         vo.setCancelReason(info.getCancelReason());
         vo.setCreateTime(info.getCreateTime());
+        vo.setPayLogId(info.getPayLogId());
         vo.setAutoCancelTime(info.getAutoCancelTime());
         vo.setPayTime(info.getPayTime());
         vo.setShipTime(info.getShipTime());
@@ -375,7 +379,7 @@ public class OrderServiceImpl implements OrderService {
                 item.setSkuId(i.getSkuId());
                 item.setSpuName(i.getSpuName());
                 item.setSkuSpec(i.getSkuSpec());
-                item.setSkuImage(i.getSkuImage());
+                item.setSkuImage(fileUrl(i.getSkuImage()));
                 item.setPrice(i.getPrice());
                 item.setQuantity(i.getQuantity());
                 item.setTotalAmount(i.getTotalAmount());
@@ -492,5 +496,16 @@ public class OrderServiceImpl implements OrderService {
             case 5: return "已退款";
             default: return "未知";
         }
+    }
+
+    /** 图片相对路径拼完整 URL（存储为裸 key，展示时补 file-base-url 前缀） */
+    private String fileUrl(String key) {
+        if (key == null || key.isEmpty()) {
+            return key;
+        }
+        if (key.startsWith("http://") || key.startsWith("https://")) {
+            return key;
+        }
+        return fileBaseUrl + "/file/view/" + key;
     }
 }
