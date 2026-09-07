@@ -12,6 +12,9 @@ public class AppSpuDetailVO {
 
     private Long spuId;
 
+    /** 归属店铺（详情页按店领券用） */
+    private Long shopId;
+
     private String name;
 
     private String subtitle;

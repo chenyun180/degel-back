@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.common.core.Constants;
 import com.degel.product.vo.SpuListVo;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.Operator;
 import org.elasticsearch.index.query.QueryBuilders;
@@ -28,6 +29,7 @@ import java.util.stream.Collectors;
  * 可见性是服务端硬约束（status=1 + auditStatus=2 写死在 filter 里），
  * 方法签名没有任何 status 参数——调用方想绕也绕不过，区别于 /spu/page 靠调用方自觉传参的旧模式。
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SpuSearchService {
@@ -74,6 +76,9 @@ public class SpuSearchService {
 
         NativeSearchQuery query = builder.build();
         query.setTrackTotalHits(true);
+        // 执行前打印 DSL（QueryBuilder.toString() 输出 JSON 片段），排查搜索逻辑用
+        log.info("ES DSL: POST /product_spu/_search from={} size={} sort={} query={}",
+                (p - 1) * size, size, sort, bool);
         SearchHits<SpuDocument> hits = operations.search(query, SpuDocument.class);
 
         Page<SpuListVo> result = new Page<>(p, size, hits.getTotalHits());

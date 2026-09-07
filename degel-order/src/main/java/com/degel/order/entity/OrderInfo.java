@@ -21,6 +21,12 @@ public class OrderInfo extends BaseEntity {
     private BigDecimal freightAmount;
     private BigDecimal discountAmount;
     private BigDecimal payAmount;
+    /** 使用的用户券id（mk_user_coupon.id），未用券为 null */
+    private Long couponId;
+    /** 平台补贴（平台承担部分，佣金基数=券后实收的行业惯例预留） */
+    private BigDecimal platformSubsidy;
+    /** 店铺补贴（店铺承担部分） */
+    private BigDecimal shopSubsidy;
     private Integer status;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

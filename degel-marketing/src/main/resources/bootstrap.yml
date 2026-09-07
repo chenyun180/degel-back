@@ -1,0 +1,33 @@
+server:
+  port: 9206
+
+spring:
+  application:
+    name: degel-marketing
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 192.168.1.14:8848
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://192.168.1.14:3306/degel_marketing?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.degel.marketing.entity
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      # 券 id 用雪花（前端 JS 精度坑，出参统一 ToStringSerializer 转字符串）
+      id-type: assign_id
+      logic-delete-field: delFlag
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+degel:
+  inner:
+    # 与 degel-app FeignConfig 发送的 X-Inner-Token 一致（inner 接口鉴权）
+    token: ${INNER_TOKEN:degel-inner-service-token-2024}

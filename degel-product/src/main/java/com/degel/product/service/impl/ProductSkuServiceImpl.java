@@ -75,6 +75,13 @@ public class ProductSkuServiceImpl extends ServiceImpl<ProductSkuMapper, Product
                 .eq(ProductSku::getStatus, 1)
                 .ge(ProductSku::getStock, quantity));
         if (updated) {
+            // 扣库存即售出：SPU 销量 +quantity（同事务，与扣减一起成败）
+            ProductSku sku = getById(skuId);
+            if (sku != null) {
+                spuMapper.update(null, new LambdaUpdateWrapper<ProductSpu>()
+                        .setSql("sale_count = sale_count + " + quantity)
+                        .eq(ProductSpu::getId, sku.getSpuId()));
+            }
             publishStockEvent(skuId);
         }
         return updated;
@@ -91,12 +98,19 @@ public class ProductSkuServiceImpl extends ServiceImpl<ProductSkuMapper, Product
                 .eq(ProductSku::getId, skuId)
                 .eq(ProductSku::getDelFlag, 0));
         if (updated) {
+            // 回补库存即退回：销量 -quantity，GREATEST 兜底不为负（历史脏数据时）
+            ProductSku sku = getById(skuId);
+            if (sku != null) {
+                spuMapper.update(null, new LambdaUpdateWrapper<ProductSpu>()
+                        .setSql("sale_count = GREATEST(sale_count - " + quantity + ", 0)")
+                        .eq(ProductSpu::getId, sku.getSpuId()));
+            }
             publishStockEvent(skuId);
         }
         return updated;
     }
 
-    /** 库存变化后同步所属 SPU 的 ES 索引（totalStock 冗余字段） */
+    /** 库存/销量变化后同步所属 SPU 的 ES 索引（totalStock、saleCount 冗余字段） */
     private void publishStockEvent(Long skuId) {
         ProductSku sku = getById(skuId);
         if (sku != null) {
@@ -109,17 +123,22 @@ public class ProductSkuServiceImpl extends ServiceImpl<ProductSkuMapper, Product
             return Collections.emptyList();
         }
         // 关联 SPU 名称（degel-app 下单快照取 spuName，skuName 兜底同值）
-        Map<Long, String> spuNameMap = spuMapper.selectBatchIds(
+        Map<Long, ProductSpu> spuMap = spuMapper.selectBatchIds(
                         skus.stream().map(ProductSku::getSpuId).collect(Collectors.toSet()))
                 .stream()
-                .collect(Collectors.toMap(ProductSpu::getId, ProductSpu::getName, (a, b) -> a));
+                .collect(Collectors.toMap(ProductSpu::getId, spu -> spu, (a, b) -> a));
         return skus.stream().map(sku -> {
             AppSkuVo vo = new AppSkuVo();
             vo.setId(sku.getId());
             vo.setSpuId(sku.getSpuId());
             vo.setSkuCode(sku.getSkuCode());
-            String spuName = spuNameMap.get(sku.getSpuId());
+            ProductSpu spu = spuMap.get(sku.getSpuId());
+            String spuName = spu != null ? spu.getName() : null;
             vo.setSpuName(spuName);
+            // SPU 带出店铺归属（C 端按店拆单用）
+            if (spu != null) {
+                vo.setShopId(spu.getShopId());
+            }
             vo.setSkuName(spuName);
             vo.setSpecData(sku.getSpecData());
             vo.setPrice(sku.getPrice());

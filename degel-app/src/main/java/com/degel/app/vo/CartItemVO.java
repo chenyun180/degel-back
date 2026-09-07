@@ -14,6 +14,9 @@ public class CartItemVO {
 
     private Long spuId;
 
+    /** 归属店铺（SKU/SPU 带出，前端按店分组用） */
+    private Long shopId;
+
     private Long skuId;
 
     private String spuName;

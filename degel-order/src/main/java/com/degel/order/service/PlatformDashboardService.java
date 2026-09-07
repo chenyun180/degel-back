@@ -31,6 +31,7 @@ public class PlatformDashboardService {
         vo.setTodayGmv(orderStatsMapper.sumTodayGmv());
         vo.setTodayOrderCount(orderStatsMapper.countTodayOrders());
         vo.setPendingShipCount(orderStatsMapper.countPendingShip());
+        vo.setMonthPlatformSubsidy(orderStatsMapper.sumMonthPlatformSubsidy());
         vo.setShopTop5(orderStatsMapper.selectShopGmvTop5());
         vo.setProductTop5(orderStatsMapper.selectProductGmvTop5());
         return vo;

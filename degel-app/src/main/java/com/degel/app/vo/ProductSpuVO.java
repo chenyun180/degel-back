@@ -13,6 +13,9 @@ public class ProductSpuVO {
 
     private Long id;
 
+    /** 归属店铺（product 侧 flat 接口带出，详情页按店领券用） */
+    private Long shopId;
+
     private String name;
 
     private String subtitle;

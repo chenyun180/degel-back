@@ -36,6 +36,7 @@ public class PayServiceImpl implements PayService {
 
     private final MallPaymentLogMapper mallPaymentLogMapper;
     private final OrderFeignClient orderFeignClient;
+    private final com.degel.app.feign.MarketingFeignClient marketingFeignClient;
     private final RedissonClient redissonClient;
 
     // =========================================================
@@ -105,6 +106,18 @@ public class PayServiceImpl implements PayService {
                 if (updateResp == null || updateResp.getCode() != 200) {
                     // 支付流水已写，记录日志，由补偿任务处理
                     log.error("[PayServiceImpl] 支付流水写入成功但更新订单状态失败 orderId={} payLogId={}", orderId, payLog.getId());
+                }
+
+                // 3.5 核销优惠券（1→2，回填 orderId）。幂等可重试；失败不阻断支付主流程
+                if (orderInfo.getCouponId() != null) {
+                    try {
+                        com.degel.app.vo.dto.CouponConfirmReqVO confirmReq = new com.degel.app.vo.dto.CouponConfirmReqVO();
+                        confirmReq.setOrderId(orderId);
+                        confirmReq.setOrderNo(orderInfo.getOrderNo());
+                        marketingFeignClient.confirm(confirmReq);
+                    } catch (Exception ex) {
+                        log.error("[PayServiceImpl] 券核销失败（幂等，可重试）orderId={}", orderId, ex);
+                    }
                 }
 
                 // 4. 返回 PayResultVO

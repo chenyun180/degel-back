@@ -63,7 +63,8 @@ class AuthFlowTest {
         AppJwtConfig jwtConfig = new AppJwtConfig();
         jwtConfig.setSecret(TEST_SECRET);
         jwtConfig.setExpiration(604800L);
-        return new AppSecurityFilter(jwtConfig);
+        // 2026-08-26 起 AppSecurityFilter 增加 Redis 黑名单校验，单测用 mock（hasKey 默认 false=未拉黑）
+        return new AppSecurityFilter(jwtConfig, org.mockito.Mockito.mock(org.springframework.data.redis.core.StringRedisTemplate.class));
     }
 
     private String buildToken(long userId) {

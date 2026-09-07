@@ -21,4 +21,6 @@ public class OrderItem extends BaseEntity {
     private BigDecimal price;
     private Integer quantity;
     private BigDecimal totalAmount;
+    /** 该商品分摊的券优惠额（退款取数：item 实付 = totalAmount - couponDiscount） */
+    private BigDecimal couponDiscount;
 }

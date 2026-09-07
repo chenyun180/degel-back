@@ -31,6 +31,7 @@ public class OrderTimeoutCancelTask {
 
     private final OrderFeignClient orderFeignClient;
     private final StockFeignClient stockFeignClient;
+    private final com.degel.app.feign.MarketingFeignClient marketingFeignClient;
 
     @Scheduled(cron = "0 * * * * ?")
     public void cancelTimeoutOrders() {
@@ -55,6 +56,16 @@ public class OrderTimeoutCancelTask {
                     stockFeignClient.restoreStock(new StockRestoreVO(item.getSkuId(), item.getQuantity()));
                 } catch (Exception ex) {
                     log.error("[OrderTimeoutCancelTask] 恢复库存失败 orderId={} skuId={}", order.getId(), item.getSkuId(), ex);
+                }
+            }
+            // 释放超时取消订单占用的优惠券（幂等；失败由 marketing 60 分钟僵尸锁任务兜底）
+            if (order.getCouponId() != null) {
+                try {
+                    com.degel.app.vo.dto.CouponOrderRefVO ref = new com.degel.app.vo.dto.CouponOrderRefVO();
+                    ref.setOrderNo(order.getOrderNo());
+                    marketingFeignClient.unlock(ref);
+                } catch (Exception ex) {
+                    log.error("[OrderTimeoutCancelTask] 券释放失败 orderId={}", order.getId(), ex);
                 }
             }
         }

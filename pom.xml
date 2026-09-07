@@ -26,6 +26,7 @@
         <module>degel-product</module>
         <module>degel-order</module>
         <module>degel-app</module>
+        <module>degel-marketing</module>
     </modules>
 
     <properties>
@@ -39,6 +40,10 @@
         <security-oauth2-autoconfigure.version>2.6.8</security-oauth2-autoconfigure.version>
         <jjwt.version>0.11.5</jjwt.version>
         <aws-s3.version>2.42.2</aws-s3.version>
+        <!-- ⚠️ ES 客户端版本不要改：必须保持 Boot 2.6.13 托管的 7.15.2（不要"对齐"到服务端 7.17.29）。
+             Spring Data ES 4.3.9 按 ES 7.15/7.16 编译；ES 7.17 把 XContentType 移包（org.elasticsearch.common.xcontent
+             → org.elasticsearch.xcontent），客户端升 7.17 会 NoSuchFieldError 写路径全挂（2026-09-04 实测踩坑）。
+             客户端 7.15.2 连服务端 7.17.29 集群官方兼容（HLRC 同大版本向后兼容），读写均正常 -->
     </properties>
 
     <dependencyManagement>

@@ -1,6 +1,7 @@
 package com.degel.order.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import java.math.BigDecimal;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -137,6 +138,9 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         order.setFreightAmount(vo.getFreightAmount());
         order.setDiscountAmount(vo.getDiscountAmount());
         order.setPayAmount(vo.getPayAmount());
+        order.setCouponId(vo.getCouponId());
+        order.setPlatformSubsidy(vo.getPlatformSubsidy() != null ? vo.getPlatformSubsidy() : BigDecimal.ZERO);
+        order.setShopSubsidy(vo.getShopSubsidy() != null ? vo.getShopSubsidy() : BigDecimal.ZERO);
         order.setStatus(0);
         order.setReceiverName(vo.getReceiverName());
         order.setReceiverPhone(vo.getReceiverPhone());
@@ -158,6 +162,7 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
                 entity.setPrice(item.getPrice());
                 entity.setQuantity(item.getQuantity());
                 entity.setTotalAmount(item.getTotalAmount());
+                entity.setCouponDiscount(item.getCouponDiscount() != null ? item.getCouponDiscount() : BigDecimal.ZERO);
                 return entity;
             }).collect(Collectors.toList());
             orderItemService.saveBatch(items);
@@ -275,6 +280,9 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         vo.setFreightAmount(order.getFreightAmount());
         vo.setDiscountAmount(order.getDiscountAmount());
         vo.setPayAmount(order.getPayAmount());
+        vo.setCouponId(order.getCouponId());
+        vo.setPlatformSubsidy(order.getPlatformSubsidy());
+        vo.setShopSubsidy(order.getShopSubsidy());
         vo.setStatus(order.getStatus());
         vo.setPayTime(order.getPayTime());
         vo.setShipTime(order.getShipTime());

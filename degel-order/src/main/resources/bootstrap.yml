@@ -23,3 +23,8 @@ mybatis-plus:
       logic-not-delete-value: 0
   configuration:
     map-underscore-to-camel-case: true
+
+degel:
+  inner:
+    # 出站给 degel-marketing 的 X-Inner-Token（与 marketing 校验值一致）
+    token: ${INNER_TOKEN:degel-inner-service-token-2024}

@@ -21,6 +21,12 @@ public class OrderInfoVO {
     private BigDecimal freightAmount;
     private BigDecimal discountAmount;
     private BigDecimal payAmount;
+    /** 使用的用户券id（未用券为 null）——取消/核销时定位券 */
+    private Long couponId;
+    /** 平台补贴（平台承担部分） */
+    private BigDecimal platformSubsidy;
+    /** 店铺补贴（店铺承担部分） */
+    private BigDecimal shopSubsidy;
     /** 0待付款 1待发货 2待收货 3已完成 4已取消 5已退款 */
     private Integer status;
 

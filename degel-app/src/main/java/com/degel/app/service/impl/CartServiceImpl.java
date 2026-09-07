@@ -214,6 +214,7 @@ public class CartServiceImpl implements CartService {
             item.setCartId(cart.getId());
             item.setSkuId(cart.getSkuId());
             item.setSpuId(cart.getSpuId());
+            item.setShopId(sku.getShopId());
             item.setSpuName(spuName);
             item.setSkuSpec(skuSpec);
             item.setSkuImage(fileUrl(sku.getImage()));
@@ -228,12 +229,28 @@ public class CartServiceImpl implements CartService {
             items.add(item);
         }
 
-        // 5. 组装结算汇总
+        // 5. 按店铺分组（拆单预览：一次提交将按店拆成 N 个子订单，保序）
+        Map<Long, CartCheckVO.ShopGroup> groupMap = new LinkedHashMap<>();
+        for (CartCheckItemVO item : items) {
+            Long shopId = item.getShopId() != null ? item.getShopId() : 0L;
+            CartCheckVO.ShopGroup group = groupMap.computeIfAbsent(shopId, k -> {
+                CartCheckVO.ShopGroup g = new CartCheckVO.ShopGroup();
+                g.setShopId(shopId);
+                g.setItems(new ArrayList<>());
+                g.setShopTotalAmount(BigDecimal.ZERO);
+                return g;
+            });
+            group.getItems().add(item);
+            group.setShopTotalAmount(group.getShopTotalAmount().add(item.getSubtotal()));
+        }
+
+        // 6. 组装结算汇总（平铺字段保留兼容旧前端，新前端用 shopGroups）
         CartCheckVO checkVO = new CartCheckVO();
         checkVO.setItems(items);
         checkVO.setTotalAmount(totalAmount);
         checkVO.setFreightAmount(BigDecimal.ZERO);
         checkVO.setPayAmount(totalAmount);
+        checkVO.setShopGroups(new ArrayList<>(groupMap.values()));
         return checkVO;
     }
 
@@ -305,6 +322,9 @@ public class CartServiceImpl implements CartService {
         item.setQuantity(cart.getQuantity());
 
         ProductSkuVO sku = skuMap.get(cart.getSkuId());
+        if (sku != null) {
+            item.setShopId(sku.getShopId());
+        }
         ProductSpuVO spu = spuMap.get(cart.getSpuId());
 
         boolean invalid = (sku == null || !Integer.valueOf(1).equals(sku.getStatus()))

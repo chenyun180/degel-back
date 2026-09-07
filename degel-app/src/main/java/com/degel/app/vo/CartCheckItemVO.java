@@ -16,6 +16,9 @@ public class CartCheckItemVO {
 
     private Long spuId;
 
+    /** 归属店铺（拆单分组用） */
+    private Long shopId;
+
     private String spuName;
 
     private String skuSpec;

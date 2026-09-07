@@ -22,6 +22,10 @@ public class OrderInfoVo {
     private BigDecimal freightAmount;
     private BigDecimal discountAmount;
     private BigDecimal payAmount;
+    /** 使用的用户券id（app 侧据此决定取消/核销时是否调 marketing） */
+    private Long couponId;
+    private BigDecimal platformSubsidy;
+    private BigDecimal shopSubsidy;
     private Integer status;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime payTime;

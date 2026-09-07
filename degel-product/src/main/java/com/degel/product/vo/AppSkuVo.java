@@ -13,6 +13,8 @@ public class AppSkuVo {
 
     private Long id;
     private Long spuId;
+    /** 归属店铺（SPU 带出，C 端按店拆单用） */
+    private Long shopId;
     private String skuCode;
     private String skuName;
     private String spuName;

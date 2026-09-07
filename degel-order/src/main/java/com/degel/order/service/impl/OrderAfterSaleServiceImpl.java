@@ -30,6 +30,7 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
 
     // 注入 Mapper 而非 Service，避免与 OrderInfoServiceImpl 形成构造器循环依赖
     private final OrderInfoMapper orderInfoMapper;
+    private final com.degel.order.feign.MarketingFeignClient marketingFeignClient;
 
     @Override
     public IPage<OrderAfterSale> pageAfterSales(IPage<OrderAfterSale> page, Long shopId, Integer status, Integer type) {
@@ -74,6 +75,21 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             updateWrapper.set(OrderAfterSale::getMerchantRemark, vo.getMerchantRemark());
         }
         update(updateWrapper);
+
+        // 整单退款完成（agree + type=1 仅退款）→ 退回优惠券（2→未过期?4:5，幂等）。
+        // 补贴记账冲销口径：报表按售后状态剔除该单补贴，一期不加冲销列。
+        // ⚠️ Feign 在事务内 best-effort：失败仅记日志（券状态可人工/重试修复），不影响售后主流程
+        if ("agree".equals(vo.getAction()) && afterSale.getType() == 1) {
+            try {
+                java.util.Map<String, Long> req = new java.util.HashMap<>(1);
+                req.put("orderId", afterSale.getOrderId());
+                marketingFeignClient.returnCoupon(req);
+            } catch (Exception ex) {
+                org.slf4j.LoggerFactory.getLogger(OrderAfterSaleServiceImpl.class)
+                        .error("[handle] 整单退回券失败（可人工补偿）afterSaleId={} orderId={}",
+                                afterSale.getId(), afterSale.getOrderId(), ex);
+            }
+        }
     }
 
     @Override

@@ -12,6 +12,7 @@ import com.degel.app.feign.StockFeignClient;
 import com.degel.app.mapper.MallAddressMapper;
 import com.degel.app.mapper.MallCartMapper;
 import com.degel.app.service.OrderService;
+import com.degel.app.util.CouponAllocator;
 import com.degel.app.vo.*;
 import com.degel.app.vo.dto.*;
 import com.degel.common.core.R;
@@ -42,6 +43,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderFeignClient orderFeignClient;
     private final ProductFeignClient productFeignClient;
     private final StockFeignClient stockFeignClient;
+    private final com.degel.app.feign.MarketingFeignClient marketingFeignClient;
     private final MallCartMapper mallCartMapper;
     private final MallAddressMapper mallAddressMapper;
     private final RedissonClient redissonClient;
@@ -108,6 +110,10 @@ public class OrderServiceImpl implements OrderService {
         // Step 4: 分布式锁 + 库存扣减（防超卖）
         List<Long> lockedSkuIds = new ArrayList<>();
         List<RLock> acquiredLocks = new ArrayList<>();
+        // 已锁券的子单号（catch 补偿 unlock 用）
+        List<String> lockedCouponOrderNos = new ArrayList<>();
+        // 已落库的子单 id（catch 补偿取消用——任一子单失败则全部回滚）
+        List<Long> createdOrderIds = new ArrayList<>();
         try {
             for (Long skuId : skuIds) {
                 ProductSkuVO sku = skuMap.get(skuId);
@@ -156,15 +162,12 @@ public class OrderServiceImpl implements OrderService {
                 throw BusinessException.of(40013, "收货地址不存在");
             }
 
-            // Step 6: 计算金额
-            BigDecimal totalAmount = BigDecimal.ZERO;
-            List<OrderCreateInnerReqVO.OrderItemInnerVO> itemList = new ArrayList<>();
-
+            // Step 6: 组明细并按店铺分组（SKU 已带 shopId；LinkedHashMap 保序 → 子单顺序稳定）
+            Map<Long, List<OrderCreateInnerReqVO.OrderItemInnerVO>> shopItems = new LinkedHashMap<>();
             for (Long skuId : skuIds) {
                 ProductSkuVO sku = skuMap.get(skuId);
                 Integer qty = skuQuantityMap.get(skuId);
                 BigDecimal itemTotal = sku.getPrice().multiply(BigDecimal.valueOf(qty));
-                totalAmount = totalAmount.add(itemTotal);
 
                 // 构建订单明细（快照）
                 OrderCreateInnerReqVO.OrderItemInnerVO item = new OrderCreateInnerReqVO.OrderItemInnerVO();
@@ -178,61 +181,138 @@ public class OrderServiceImpl implements OrderService {
                 item.setPrice(sku.getPrice());
                 item.setQuantity(qty);
                 item.setTotalAmount(itemTotal);
-                itemList.add(item);
+                shopItems.computeIfAbsent(sku.getShopId() != null ? sku.getShopId() : 0L,
+                        k -> new ArrayList<>()).add(item);
             }
-            BigDecimal freightAmount = BigDecimal.ZERO;
-            BigDecimal discountAmount = BigDecimal.ZERO;
-            BigDecimal payAmount = totalAmount.add(freightAmount).subtract(discountAmount);
 
-            // Step 7: 生成订单号 yyyyMMddHHmmss + userId末4位 + 4位随机数
-            String orderNo = generateOrderNo(userId);
+            // Step 6.5: 券绑定解析——couponBindings 优先（每子单独立选券，店铺券绑对应店）；
+            // 兼容老 couponId 字段：单店挂唯一子单，多店挂金额最大子单
+            Map<Long, Long> shopCouponMap = new HashMap<>();
+            if (reqVO.getCouponBindings() != null) {
+                for (OrderCreateReqVO.CouponBinding b : reqVO.getCouponBindings()) {
+                    if (b.getShopId() != null && b.getCouponId() != null) {
+                        shopCouponMap.put(b.getShopId(), b.getCouponId());
+                    }
+                }
+            } else if (reqVO.getCouponId() != null) {
+                shopCouponMap.put(resolveLegacyCouponShop(shopItems), reqVO.getCouponId());
+            }
 
-            // Step 8: 构建内部创建请求，调用 degel-order
+            // Step 7: 逐店建子单（每子单独立 orderNo/金额/券，失败整体回滚见 catch）
             String fullAddress = address.getProvince() + address.getCity()
                     + address.getDistrict() + address.getDetail();
-            OrderCreateInnerReqVO innerReq = new OrderCreateInnerReqVO();
-            innerReq.setUserId(userId);
-            innerReq.setShopId(1L); // 默认shopId，MVP阶段
-            innerReq.setOrderNo(orderNo);
-            innerReq.setTotalAmount(totalAmount);
-            innerReq.setFreightAmount(freightAmount);
-            innerReq.setDiscountAmount(discountAmount);
-            innerReq.setPayAmount(payAmount);
-            innerReq.setReceiverName(address.getName());
-            innerReq.setReceiverPhone(address.getPhone());
-            innerReq.setReceiverAddress(fullAddress);
-            innerReq.setRemark(reqVO.getRemark());
-            innerReq.setAutoCancelTime(LocalDateTime.now().plusMinutes(30));
-            innerReq.setItems(itemList);
+            List<OrderCreateVO.SubOrder> subOrders = new ArrayList<>();
+            BigDecimal totalPayAmount = BigDecimal.ZERO;
+            LocalDateTime autoCancelTime = LocalDateTime.now().plusMinutes(30);
 
-            R<Long> createResp = orderFeignClient.createOrder(innerReq);
-            if (createResp == null || createResp.getCode() != 200 || createResp.getData() == null) {
-                throw BusinessException.of(50001, "创建订单失败，请稍后重试");
+            for (Map.Entry<Long, List<OrderCreateInnerReqVO.OrderItemInnerVO>> entry : shopItems.entrySet()) {
+                Long shopId = entry.getKey();
+                List<OrderCreateInnerReqVO.OrderItemInnerVO> itemList = entry.getValue();
+                BigDecimal subTotal = BigDecimal.ZERO;
+                for (OrderCreateInnerReqVO.OrderItemInnerVO item : itemList) {
+                    subTotal = subTotal.add(item.getTotalAmount());
+                }
+                BigDecimal freightAmount = BigDecimal.ZERO;
+                BigDecimal discountAmount = BigDecimal.ZERO;
+                String orderNo = generateOrderNo(userId);
+
+                // 锁券（该子单绑定的券；失败直接阻断下单，不能静默原价下单）
+                CouponLockRespVO couponLock = null;
+                Long boundCouponId = shopCouponMap.get(shopId);
+                if (boundCouponId != null) {
+                    CouponLockReqVO lockReq = new CouponLockReqVO();
+                    lockReq.setUserCouponId(boundCouponId);
+                    lockReq.setUserId(userId);
+                    lockReq.setOrderNo(orderNo);
+                    lockReq.setTotalAmount(subTotal);
+                    // 子单归属店铺：店铺券校验本店的依据（平台券忽略）
+                    lockReq.setShopId(shopId);
+                    R<CouponLockRespVO> lockR = marketingFeignClient.lock(lockReq);
+                    if (lockR == null || lockR.getCode() != 200 || lockR.getData() == null) {
+                        throw BusinessException.of(40014,
+                                lockR != null && lockR.getMsg() != null ? lockR.getMsg() : "优惠券不可用");
+                    }
+                    couponLock = lockR.getData();
+                    lockedCouponOrderNos.add(orderNo);
+                    discountAmount = couponLock.getDiscountAmount();
+
+                    // 分摊到子单明细（Σ分摊 = 优惠额，尾差落最大项；退款按 totalAmount - couponDiscount 取数）
+                    List<BigDecimal> itemTotals = new ArrayList<>();
+                    for (OrderCreateInnerReqVO.OrderItemInnerVO item : itemList) {
+                        itemTotals.add(item.getTotalAmount());
+                    }
+                    List<BigDecimal> shares = CouponAllocator.allocate(itemTotals, discountAmount);
+                    for (int i = 0; i < itemList.size(); i++) {
+                        itemList.get(i).setCouponDiscount(shares.get(i));
+                    }
+                }
+                BigDecimal payAmount = subTotal.add(freightAmount).subtract(discountAmount);
+                // 优惠后不允许负数订单（lock 已按订单额封顶，此处防御性兜底）
+                if (payAmount.compareTo(BigDecimal.ZERO) < 0) {
+                    throw BusinessException.of(40015, "订单金额异常");
+                }
+
+                // Step 8: 构建内部创建请求，调用 degel-order（shopId=真实归属，替换 MVP 写死值）
+                OrderCreateInnerReqVO innerReq = new OrderCreateInnerReqVO();
+                innerReq.setUserId(userId);
+                innerReq.setShopId(shopId);
+                innerReq.setOrderNo(orderNo);
+                innerReq.setTotalAmount(subTotal);
+                innerReq.setFreightAmount(freightAmount);
+                innerReq.setDiscountAmount(discountAmount);
+                innerReq.setPayAmount(payAmount);
+                if (couponLock != null) {
+                    innerReq.setCouponId(boundCouponId);
+                    innerReq.setPlatformSubsidy(couponLock.getPlatformAmount());
+                    innerReq.setShopSubsidy(couponLock.getShopAmount() != null ? couponLock.getShopAmount() : BigDecimal.ZERO);
+                }
+                innerReq.setReceiverName(address.getName());
+                innerReq.setReceiverPhone(address.getPhone());
+                innerReq.setReceiverAddress(fullAddress);
+                innerReq.setRemark(reqVO.getRemark());
+                innerReq.setAutoCancelTime(autoCancelTime);
+                innerReq.setItems(itemList);
+
+                R<Long> createResp = orderFeignClient.createOrder(innerReq);
+                if (createResp == null || createResp.getCode() != 200 || createResp.getData() == null) {
+                    throw BusinessException.of(50001, "创建订单失败，请稍后重试");
+                }
+                createdOrderIds.add(createResp.getData());
+
+                OrderCreateVO.SubOrder sub = new OrderCreateVO.SubOrder();
+                sub.setOrderId(createResp.getData());
+                sub.setOrderNo(orderNo);
+                sub.setShopId(shopId);
+                sub.setPayAmount(payAmount);
+                sub.setAutoCancelTime(autoCancelTime);
+                subOrders.add(sub);
+                totalPayAmount = totalPayAmount.add(payAmount);
             }
-            Long orderId = createResp.getData();
 
-            // Step 9: 购物车模式 → 删除购物车记录
+            // Step 9: 购物车模式 → 删除购物车记录（全部子单成功后一次删，失败回滚时不删）
             if (hasCart) {
                 mallCartMapper.deleteByIdsAndUserId(reqVO.getCartIds(), userId);
             }
 
-            // Step 10: 返回 OrderCreateVO
+            // Step 10: 返回（兼容字段=首单，新前端用 orders/totalPayAmount）
             OrderCreateVO result = new OrderCreateVO();
-            result.setOrderId(orderId);
-            result.setOrderNo(orderNo);
-            result.setPayAmount(payAmount);
-            result.setAutoCancelTime(innerReq.getAutoCancelTime());
+            result.setOrderId(subOrders.get(0).getOrderId());
+            result.setOrderNo(subOrders.get(0).getOrderNo());
+            result.setPayAmount(subOrders.get(0).getPayAmount());
+            result.setAutoCancelTime(autoCancelTime);
+            result.setOrders(subOrders);
+            result.setTotalPayAmount(totalPayAmount);
             return result;
 
         } catch (BusinessException e) {
-            // 如果已扣减的库存需要回滚（加锁失败或后续步骤失败时恢复）
-            restoreDeductedStock(lockedSkuIds, skuQuantityMap);
+            // 拆单整体回滚：恢复库存 + 取消已落库子单 + 解锁已锁券
+            rollbackSplitOrder(lockedSkuIds, skuQuantityMap, createdOrderIds, lockedCouponOrderNos);
             throw e;
         } catch (Exception e) {
             log.error("[OrderServiceImpl] createOrder 异常", e);
-            restoreDeductedStock(lockedSkuIds, skuQuantityMap);
+            rollbackSplitOrder(lockedSkuIds, skuQuantityMap, createdOrderIds, lockedCouponOrderNos);
             throw BusinessException.of(50001, "创建订单失败：" + e.getMessage());
-        } finally {
+                } finally {
             // 释放所有已获取的锁
             for (RLock lock : acquiredLocks) {
                 try {
@@ -243,6 +323,69 @@ public class OrderServiceImpl implements OrderService {
                     log.warn("[OrderServiceImpl] unlock 异常", ex);
                 }
             }
+        }
+    }
+
+    /**
+     * 兼容老 couponId 字段：单店挂唯一子单，多店挂金额最大子单（正式口径是 couponBindings）
+     */
+    private Long resolveLegacyCouponShop(Map<Long, List<OrderCreateInnerReqVO.OrderItemInnerVO>> shopItems) {
+        if (shopItems.size() == 1) {
+            return shopItems.keySet().iterator().next();
+        }
+        Long maxShop = null;
+        BigDecimal max = null;
+        for (Map.Entry<Long, List<OrderCreateInnerReqVO.OrderItemInnerVO>> e : shopItems.entrySet()) {
+            BigDecimal t = BigDecimal.ZERO;
+            for (OrderCreateInnerReqVO.OrderItemInnerVO item : e.getValue()) {
+                t = t.add(item.getTotalAmount());
+            }
+            if (max == null || t.compareTo(max) > 0) {
+                max = t;
+                maxShop = e.getKey();
+            }
+        }
+        return maxShop;
+    }
+
+    /**
+     * 拆单整体回滚：恢复库存 + 取消已落库子单（status=4）+ 解锁已锁券。
+     * 子单落库到补偿取消在同一请求内完成，用户不可能同时支付未返回的订单，无并发窗口。
+     * 各步骤独立 try-catch best-effort：失败仅记日志（券由 marketing 60 分钟兜底任务释放；
+     * 已取消子单若残留为待付款，会被现有超时取消任务收敛）。
+     */
+    private void rollbackSplitOrder(List<Long> lockedSkuIds, Map<Long, Integer> skuQuantityMap,
+                                    List<Long> createdOrderIds, List<String> lockedCouponOrderNos) {
+        restoreDeductedStock(lockedSkuIds, skuQuantityMap);
+        for (Long orderId : createdOrderIds) {
+            try {
+                OrderStatusUpdateVO cancel = new OrderStatusUpdateVO();
+                cancel.setStatus(4);
+                cancel.setCancelTime(LocalDateTime.now());
+                cancel.setCancelReason("拆单回滚");
+                orderFeignClient.updateOrderStatus(orderId, cancel);
+            } catch (Exception ex) {
+                log.error("[rollbackSplitOrder] 取消已落库子单失败 orderId={}（由超时取消任务收敛）", orderId, ex);
+            }
+        }
+        for (String orderNo : lockedCouponOrderNos) {
+            releaseLockedCoupon(orderNo);
+        }
+    }
+
+    /**
+     * 释放已锁定的券（下单失败补偿；幂等，unlock 失败由 marketing 60 分钟僵尸锁任务兜底）
+     */
+    private void releaseLockedCoupon(String lockedCouponOrderNo) {
+        if (lockedCouponOrderNo == null) {
+            return;
+        }
+        try {
+            CouponOrderRefVO ref = new CouponOrderRefVO();
+            ref.setOrderNo(lockedCouponOrderNo);
+            marketingFeignClient.unlock(ref);
+        } catch (Exception ex) {
+            log.error("[OrderServiceImpl] 券补偿解锁失败 orderNo={}（等 marketing 兜底任务）", lockedCouponOrderNo, ex);
         }
     }
 
@@ -448,6 +591,11 @@ public class OrderServiceImpl implements OrderService {
                         log.error("[cancelOrder] 恢复库存失败 skuId={}", item.getSkuId(), ex);
                     }
                 }
+            }
+
+            // 释放订单占用的优惠券（幂等；失败由 marketing 60 分钟僵尸锁任务兜底）
+            if (orderInfoVO.getCouponId() != null) {
+                releaseLockedCoupon(orderInfoVO.getOrderNo());
             }
         } finally {
             if (lock.isHeldByCurrentThread()) {

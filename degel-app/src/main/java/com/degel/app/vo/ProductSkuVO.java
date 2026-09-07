@@ -13,6 +13,8 @@ public class ProductSkuVO {
     private Long id;
 
     private Long spuId;
+    /** 归属店铺（product 侧 AppSkuVo 带出，按店拆单用） */
+    private Long shopId;
 
     private String skuCode;
 

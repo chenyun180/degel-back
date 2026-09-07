@@ -17,6 +17,12 @@ public class OrderCreateInnerReqVO {
     private java.math.BigDecimal freightAmount;
     private java.math.BigDecimal discountAmount;
     private java.math.BigDecimal payAmount;
+    /** 使用的用户券id（mk_user_coupon.id），未用券为 null */
+    private Long couponId;
+    /** 平台补贴（平台承担部分，订单记账） */
+    private java.math.BigDecimal platformSubsidy;
+    /** 店铺补贴（店铺承担部分，订单记账） */
+    private java.math.BigDecimal shopSubsidy;
     /** 收货人姓名 */
     private String receiverName;
     /** 收货人手机 */
@@ -40,5 +46,7 @@ public class OrderCreateInnerReqVO {
         private java.math.BigDecimal price;
         private Integer quantity;
         private java.math.BigDecimal totalAmount;
+        /** 该商品分摊的券优惠额（退款取数依据：item 实付 = totalAmount - couponDiscount） */
+        private java.math.BigDecimal couponDiscount;
     }
 }

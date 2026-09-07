@@ -213,6 +213,7 @@ public class ProductServiceImpl implements ProductService {
         // 6. 组装 AppSpuDetailVO
         AppSpuDetailVO detail = new AppSpuDetailVO();
         detail.setSpuId(spu.getId());
+        detail.setShopId(spu.getShopId());
         detail.setName(spu.getName());
         detail.setSubtitle(spu.getSubtitle());
         detail.setMainImage(fileUrl(spu.getMainImage()));

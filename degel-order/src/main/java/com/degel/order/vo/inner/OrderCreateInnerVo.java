@@ -19,6 +19,9 @@ public class OrderCreateInnerVo {
     private BigDecimal freightAmount;
     private BigDecimal discountAmount;
     private BigDecimal payAmount;
+    private Long couponId;
+    private BigDecimal platformSubsidy;
+    private BigDecimal shopSubsidy;
     private String receiverName;
     private String receiverPhone;
     private String receiverAddress;
@@ -36,5 +39,6 @@ public class OrderCreateInnerVo {
         private BigDecimal price;
         private Integer quantity;
         private BigDecimal totalAmount;
+        private BigDecimal couponDiscount;
     }
 }

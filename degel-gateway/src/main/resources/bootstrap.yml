@@ -42,6 +42,13 @@ spring:
           uri: lb://degel-app
           predicates:
             - Path=/app/**
+        # 优惠券：C 端入口在 degel-app(/app/coupon)，marketing 只承接平台管理 + 内部接口
+        - id: marketing-route
+          uri: lb://degel-marketing
+          predicates:
+            - Path=/marketing/**
+          filters:
+            - StripPrefix=1
   redis:
     host: 192.168.1.14
     port: 6379
@@ -66,6 +73,8 @@ degel:
       - /product/inner/
       # degel-order 内部接口经网关路由后的路径
       - /order/inner/
+      # degel-marketing 内部接口（锁券/核销等，X-Inner-Token + 内网双重保护）
+      - /marketing/inner/
     # admin-urls 为前缀匹配（startsWith），如 "*:/admin/user" 也会命中 /admin/users/export 等未来新增路径
     admin-urls:
       - "*:/admin/user"
@@ -75,6 +84,8 @@ degel:
       - "PUT:/product/spu/audit"
       # ES 索引全量重建（平台管理动作）
       - "POST:/product/spu/reindex"
+      # 平台券管理（仅平台角色；C 端入口走 degel-app 的 /app/coupon）
+      - "*:/marketing/platform"
       - "POST:/product/category"
       - "PUT:/product/category"
       - "DELETE:/product/category"

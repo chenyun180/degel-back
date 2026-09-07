@@ -15,6 +15,8 @@ import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -37,6 +39,8 @@ public class SpuIndexer {
     private final IProductSpuService spuService;
     private final IProductSkuService skuService;
     private final IProductCategoryService categoryService;
+    /** 写操作前打印文档 JSON 用 */
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 同步单个 SPU：可见则写入（含 SKU 聚合冗余字段），不可见/已删则从索引删除。
@@ -49,7 +53,9 @@ public class SpuIndexer {
                 delete(spuId);
                 return;
             }
-            operations.save(buildDocument(spu));
+            SpuDocument doc = buildDocument(spu);
+            log.info("ES DSL: PUT /product_spu/_doc/{} doc={}", spuId, toJson(doc));
+            operations.save(doc);
         } catch (Exception e) {
             log.warn("ES 索引同步失败 spuId={}，可稍后调用 POST /spu/reindex 修复: {}", spuId, e.getMessage());
         }
@@ -58,9 +64,18 @@ public class SpuIndexer {
     /** 从索引删除（文档本就不存在时静默） */
     public void delete(Long spuId) {
         try {
+            log.info("ES DSL: DELETE /product_spu/_doc/{}", spuId);
             operations.delete(String.valueOf(spuId), SpuDocument.class);
         } catch (Exception e) {
             log.warn("ES 索引删除失败 spuId={}: {}", spuId, e.getMessage());
+        }
+    }
+
+    private String toJson(SpuDocument doc) {
+        try {
+            return objectMapper.writeValueAsString(doc);
+        } catch (Exception e) {
+            return String.valueOf(doc);
         }
     }
 
@@ -99,6 +114,8 @@ public class SpuIndexer {
                     }
                 }
                 if (!docs.isEmpty()) {
+                    log.info("ES DSL: POST /_bulk 批量写入 {} 个文档（第 {} 批，示例 id={}）",
+                            docs.size(), current, docs.get(0).getId());
                     operations.save(docs);
                     count += docs.size();
                 }

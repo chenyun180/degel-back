@@ -13,6 +13,7 @@ Degel 商城后端 - Spring Boot 2.6 + Spring Cloud 微服务（Java 8）。管�
 | degel-order | Order processing | - | degel_order |
 | degel-file | File upload/storage | - | - |
 | degel-app | C-side BFF for mobile/applet mall flows | 9205 | degel_app |
+| degel-marketing | 优惠券（平台券一期；领券/锁券/核销/退回/过期） | 9206 | degel_marketing |
 | degel-common | Shared entities, DTOs, Feign clients | - | - |
 
 认证：管理端 OAuth2+JWT（网关 `AuthFilter` 注入 `X-User-Id`/`X-Shop-Id`）；C 端独立 app JWT。多租户：平台 `shop_id=0`，店铺 `shop_id>0`。
