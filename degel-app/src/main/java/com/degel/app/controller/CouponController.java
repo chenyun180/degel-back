@@ -9,13 +9,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * C 端优惠券入口（AppSecurityFilter 登录态）。
- * marketing 查询降级时返回空列表（券入口不可用不阻断浏览/下单），
- * 领券/锁券失败原样透出（R.code!=200 由前端 toast）。
+ * marketing 查询失败透传错误（R.code!=200 由前端 toast）——不伪装成空列表，
+ * 否则用户会把服务故障当成"没券可领"（2026-09 排查领券中心空白时定位的坑）。
  */
 @RestController
 @RequestMapping("/app/coupon")
@@ -24,14 +23,16 @@ public class CouponController {
 
     private final MarketingFeignClient marketingFeignClient;
 
-    /** 可领券列表（首页/详情页领券入口）。shopId 可空：null=平台券；传=该店券+平台券；登录态过滤已达限领的券 */
+    /** 可领券列表（首页/详情页领券入口）。shopId 可空：null=平台券；传=该店券+平台券；登录态过滤已达限领的券。
+     *  下游失败不能伪装成空列表返回 200——前端会把"服务故障"当"没券可领"展示 */
     @GetMapping("/list")
     public R<List<AppCouponVO>> list(@RequestParam(value = "shopId", required = false) Long shopId) {
         Long userId = UserContext.getUserId();
         R<List<AppCouponVO>> resp = marketingFeignClient.listReceivable(shopId, userId);
-        return resp != null && resp.getCode() == 200
-                ? R.ok(resp.getData())
-                : R.ok(Collections.emptyList());
+        if (resp == null) {
+            return R.fail("券服务暂不可用，请稍后重试");
+        }
+        return resp.getCode() == 200 ? R.ok(resp.getData()) : R.fail(resp.getMsg());
     }
 
     /** 领取 */
@@ -44,23 +45,25 @@ public class CouponController {
         return R.ok();
     }
 
-    /** 我的券（status 可选：0未用 2已核销 3已过期 4已退回） */
+    /** 我的券（status 可选：0未用 2已核销 3已过期 4已退回）。下游失败透传错误，不伪装成空列表 */
     @GetMapping("/mine")
     public R<List<AppUserCouponVO>> mine(
             @RequestParam(value = "status", required = false) Integer status) {
         R<List<AppUserCouponVO>> resp = marketingFeignClient.mine(UserContext.getUserId(), status);
-        return resp != null && resp.getCode() == 200
-                ? R.ok(resp.getData())
-                : R.ok(Collections.emptyList());
+        if (resp == null) {
+            return R.fail("券服务暂不可用，请稍后重试");
+        }
+        return resp.getCode() == 200 ? R.ok(resp.getData()) : R.fail(resp.getMsg());
     }
 
-    /** 下单可用券（结算页选券）。shopId 可空：null=平台券；传=平台券+该店店铺券（按店子单口径） */
+    /** 下单可用券（结算页选券）。shopId 可空：null=平台券；传=平台券+该店店铺券（按店子单口径）。失败透传：宁可提示重试，不可让用户误以为无券可用 */
     @GetMapping("/usable")
     public R<List<AppUserCouponVO>> usable(@RequestParam("totalAmount") BigDecimal totalAmount,
                                            @RequestParam(value = "shopId", required = false) Long shopId) {
         R<List<AppUserCouponVO>> resp = marketingFeignClient.usable(UserContext.getUserId(), totalAmount, shopId);
-        return resp != null && resp.getCode() == 200
-                ? R.ok(resp.getData())
-                : R.ok(Collections.emptyList());
+        if (resp == null) {
+            return R.fail("券服务暂不可用，请稍后重试");
+        }
+        return resp.getCode() == 200 ? R.ok(resp.getData()) : R.fail(resp.getMsg());
     }
 }

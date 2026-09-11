@@ -222,7 +222,8 @@ public class CouponServiceImpl extends ServiceImpl<CouponMapper, Coupon> impleme
 
     @Override
     public IPage<CouponVO> pagePlatformCoupons(Page<Coupon> page, String name, Integer status, Integer auditStatus) {
-        return pageCoupons(page, name, status, auditStatus, null, 1);
+        // 三期：平台列表展示全部券型（含店铺券审核），funderType 不再限定为 1（平台券）
+        return pageCoupons(page, name, status, auditStatus, null, null);
     }
 
     @Override
