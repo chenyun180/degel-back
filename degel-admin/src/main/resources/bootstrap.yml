@@ -8,6 +8,8 @@ spring:
     nacos:
       discovery:
         server-addr: 192.168.1.14:8848
+        # 固定注册地址：本机 IP 变化后旧注册 IP 失效，服务间 Feign 调用会 502；本机集群统一走 127.0.0.1
+        ip: 127.0.0.1
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_admin?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true

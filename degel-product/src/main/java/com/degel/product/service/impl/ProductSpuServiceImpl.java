@@ -385,4 +385,30 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
         // totalStock 是索引冗余字段，库存变化需同步
         publishIndexEvent(sku.getSpuId());
     }
+
+    @Override
+    public void updateRating(Long spuId, BigDecimal ratingAvg, Integer ratingCount) {
+        // 幂等覆盖写；商品不存在（被删/下架清理）时静默跳过，评价主数据不受影响
+        ProductSpu update = new ProductSpu();
+        update.setId(spuId);
+        update.setRatingAvg(ratingAvg);
+        update.setRatingCount(ratingCount);
+        updateById(update);
+    }
+
+    @Override
+    public List<SpuImageVo> listImagesByIds(List<Long> spuIds) {
+        if (spuIds == null || spuIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        // 逻辑删除由 @TableLogic 自动过滤，已删商品返回不了主图，调用方降级为无图
+        return listByIds(spuIds).stream()
+                .map(spu -> {
+                    SpuImageVo vo = new SpuImageVo();
+                    vo.setId(spu.getId());
+                    vo.setMainImage(spu.getMainImage());
+                    return vo;
+                })
+                .collect(Collectors.toList());
+    }
 }

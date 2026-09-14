@@ -47,4 +47,10 @@ public interface IOrderInfoService extends IService<OrderInfo> {
      * UPDATE 带 status=0 条件，与并发支付天然互斥；返回实际取消成功的订单（含明细，供调用方恢复库存）
      */
     List<OrderInfoVo> cancelTimeoutOrders();
+
+    /**
+     * 批量自动确认收货（status=2 且 shipTime <= now - shipDays）。
+     * UPDATE 带 status=2 条件，与并发确认收货/售后单互斥；返回实际收货成功的订单 id 列表
+     */
+    List<Long> autoConfirmReceipts(int shipDays);
 }

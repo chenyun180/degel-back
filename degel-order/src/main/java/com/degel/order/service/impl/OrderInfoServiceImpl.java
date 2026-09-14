@@ -236,6 +236,34 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public List<Long> autoConfirmReceipts(int shipDays) {
+        // 确认收货是纯状态变更（2→3 + receiveTime），无库存/券等副作用，逐单原子更新即可
+        LocalDateTime deadline = LocalDateTime.now().minusDays(shipDays);
+        List<OrderInfo> candidates = list(new LambdaQueryWrapper<OrderInfo>()
+                .eq(OrderInfo::getStatus, 2)
+                .isNotNull(OrderInfo::getShipTime)
+                .le(OrderInfo::getShipTime, deadline)
+                .select(OrderInfo::getId));
+        if (candidates.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Long> confirmed = new ArrayList<>();
+        for (OrderInfo order : candidates) {
+            // WHERE status=2 与并发确认收货/售后流转互斥：别处先改 3 则此处 0 行
+            boolean ok = update(new LambdaUpdateWrapper<OrderInfo>()
+                    .eq(OrderInfo::getId, order.getId())
+                    .eq(OrderInfo::getStatus, 2)
+                    .set(OrderInfo::getStatus, 3)
+                    .set(OrderInfo::getReceiveTime, LocalDateTime.now()));
+            if (ok) {
+                confirmed.add(order.getId());
+            }
+        }
+        return confirmed;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public List<OrderInfoVo> cancelTimeoutOrders() {
         // 1. 查出超时待付款订单
         List<OrderInfo> timeoutOrders = list(new LambdaQueryWrapper<OrderInfo>()
@@ -301,6 +329,7 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         if (items != null && !items.isEmpty()) {
             vo.setItems(items.stream().map(item -> {
                 OrderInfoVo.OrderItemVo itemVo = new OrderInfoVo.OrderItemVo();
+                itemVo.setId(item.getId());
                 itemVo.setSpuId(item.getSpuId());
                 itemVo.setSkuId(item.getSkuId());
                 itemVo.setSpuName(item.getSpuName());

@@ -115,8 +115,16 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     }
 
                     if (cEndToken) {
-                        // C 端：sub 即 mall_user.userId，注入 X-User-Id 供下游使用；
-                        // C 端请求不做管理端 admin-urls 角色校验
+                        // C 端令牌仅可访问 C 端路由（/app/**）。管理端/店铺端路由（/admin、/marketing/platform、
+                        // /marketing/shop 等）一律 403——根治 known-issues 中"c_end token 可穿透网关 admin-urls"
+                        // 与"/marketing/shop 受穿透影响"两条，不再依赖下游 X-Shop-Id==0 弱兜底。
+                        // C 端流量只经 /app/ 路由到 degel-app（H5 代理、小程序请求均如此），正常链路不受影响。
+                        String cEndPath = finalExchange.getRequest().getPath().value();
+                        if (!cEndPath.startsWith("/app/")) {
+                            log.warn("c_end token attempted non-app path: {}", cEndPath);
+                            return forbidden(finalExchange, "C 端令牌无权访问该接口");
+                        }
+                        // C 端：sub 即 mall_user.userId，注入 X-User-Id 供下游使用
                         ServerHttpRequest mutatedRequest = finalExchange.getRequest().mutate()
                                 .header("X-User-Id", claims.getSubject())
                                 .header("X-Shop-Id", "0")

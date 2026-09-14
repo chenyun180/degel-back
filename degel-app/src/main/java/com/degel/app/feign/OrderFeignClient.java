@@ -64,6 +64,12 @@ public interface OrderFeignClient {
     R<List<OrderInfoVO>> cancelTimeoutOrders();
 
     /**
+     * 批量自动确认收货（定时任务专用）：status=2 且发货超 shipDays 天 → 已完成，返回成功订单 id
+     */
+    @PutMapping("/auto-receive")
+    R<List<Long>> autoConfirmReceipts(@RequestParam("shipDays") Integer shipDays);
+
+    /**
      * 创建售后单（内部）
      */
     @PostMapping("/aftersale")

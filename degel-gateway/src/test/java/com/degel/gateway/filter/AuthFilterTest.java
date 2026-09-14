@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 class AuthFilterTest {
 
     private static final String SECRET = "degel-jwt-secret-key-2024-platform-admin";
+    private static final String APP_SECRET = "degel-c-end-secret-key-2024-change-in-prod";
     private static final String AUDIT_URL = "/product/spu/audit";
 
     private ReactiveStringRedisTemplate redisTemplate;
@@ -50,6 +51,7 @@ class AuthFilterTest {
     void setUp() {
         DegelSecurityProperties properties = new DegelSecurityProperties();
         properties.setJwtSecret(SECRET);
+        properties.setAppJwtSecret(APP_SECRET);
         properties.setIgnoreUrls(Collections.singletonList("/auth/oauth/token"));
         properties.setInternalUrls(Arrays.asList("/admin/user/find/", "/inner/"));
         properties.setAdminUrls(Arrays.asList(
@@ -271,5 +273,67 @@ class AuthFilterTest {
         verify(chain).filter(any(ServerWebExchange.class));
         assertTrue(exchange.getResponse().getStatusCode() == null
                 || exchange.getResponse().getStatusCode().is2xxSuccessful());
+    }
+
+    /** c_end 令牌（与 degel-app 相同密钥签发，type=c_end，sub=userId） */
+    private String cEndToken(String jti, Long userId) {
+        Key key = new SecretKeySpec(APP_SECRET.getBytes(StandardCharsets.UTF_8), SignatureAlgorithm.HS256.getJcaName());
+        return Jwts.builder()
+                .setId(jti)
+                .setSubject(String.valueOf(userId))
+                .claim("type", "c_end")
+                .setExpiration(new Date(System.currentTimeMillis() + 3600_000L))
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /** 场景 7a：c_end token 访问平台券管理（known-issues 记录的穿透路径）→ 403 */
+    @Test
+    void cEndTokenOnPlatformCouponUrlIsForbidden() {
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/marketing/platform/coupon/list",
+                cEndToken("jti-app-1", 1L));
+
+        authFilter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    /** 场景 7b：c_end token 访问 admin-urls（/admin/user）→ 403 */
+    @Test
+    void cEndTokenOnAdminUrlIsForbidden() {
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/admin/user/list",
+                cEndToken("jti-app-2", 1L));
+
+        authFilter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    /** 场景 7c：c_end token 访问任意非 /app 路径 → 403（/marketing/shop 穿透一并根治） */
+    @Test
+    void cEndTokenOnNonAppPathIsForbidden() {
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/order/shop/list",
+                cEndToken("jti-app-3", 1L));
+
+        authFilter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    /** 场景 7d：c_end token 访问 /app 路径 → 放行，X-User-Id 注入 sub */
+    @Test
+    void cEndTokenOnAppPathIsAllowedWithUserIdInjected() {
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/app/coupon/mine",
+                cEndToken("jti-app-4", 42L));
+
+        authFilter.filter(exchange, chain).block();
+
+        ArgumentCaptor<ServerWebExchange> captor = ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(captor.capture());
+        assertEquals("42", captor.getValue().getRequest().getHeaders().getFirst("X-User-Id"));
+        assertEquals("0", captor.getValue().getRequest().getHeaders().getFirst("X-Shop-Id"));
     }
 }

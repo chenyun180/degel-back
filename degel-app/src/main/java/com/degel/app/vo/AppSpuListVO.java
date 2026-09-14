@@ -14,6 +14,12 @@ public class AppSpuListVO {
 
     private String name;
 
+    /**
+     * 关键词高亮名称（仅关键词搜索返回，命中词以 <em></em> 包裹；推荐/分类浏览为 null）。
+     * 前端需按 <em> 切分后转义渲染，禁止 innerHTML。
+     */
+    private String highlightName;
+
     private String mainImage;
 
     /**

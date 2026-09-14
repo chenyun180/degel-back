@@ -51,6 +51,8 @@ public class OrderInfoVo {
 
     @Data
     public static class OrderItemVo {
+        /** 明细 id（C 端评价按 order_item 维度，需回传） */
+        private Long id;
         private Long spuId;
         private Long skuId;
         private String spuName;

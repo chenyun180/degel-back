@@ -76,4 +76,18 @@ public interface ProductFeignClient {
      */
     @PostMapping("/inner/sku/batch")
     R<List<ProductSkuVO>> batchGetSku(@RequestBody List<Long> skuIds);
+
+    /**
+     * 批量取 SPU 主图（评价列表等展示场景，内部接口）
+     */
+    @PostMapping("/inner/spu/batch-images")
+    R<List<ProductSpuVO>> batchGetSpuImages(@RequestBody List<Long> spuIds);
+
+    /**
+     * 搜索联想（product 侧 ES 异常自行吞掉返回空列表；Feign 级故障走 fallback 返回 fail）
+     */
+    @GetMapping("/spu/suggest")
+    R<List<String>> getSuggest(
+            @RequestParam("keyword") String keyword,
+            @RequestParam(value = "size", defaultValue = "5") Integer size);
 }

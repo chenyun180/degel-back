@@ -21,13 +21,13 @@
 
 ## 2026-09-06 优惠券一期新增
 
-- **c_end token 可穿透网关 admin-urls**：AuthFilter 对 C 端令牌不执行 admin-urls 平台角色校验直接放行，`/marketing/platform/**`（平台券管理）可被 C 端 token 命中；marketing 侧 X-Shop-Id==0 校验只是弱兜底（c_end 请求该 header 缺省也是 0）。根治需改网关 AuthFilter。
+- ~~**c_end token 可穿透网关 admin-urls**~~（✅ 2026-09-11 已根治：AuthFilter 对 c_end 令牌限制仅可访问 `/app/**`，其余路径 403；AuthFilterTest 新增 4 个用例覆盖）
 - **售后退款流水死代码**：`/app/inner/pay/refund`（InnerPayController）注释称由 degel-order 审核后调用，但无任何 FeignClient 指向它——售后 agree 后退款流水从不落库，而详情页会去查。优惠券退回（2→4）不受影响（挂在 degel-order handle agree 的 MarketingFeignClient）。
 - **degel-order/product 的 /inner/** 无 token 校验**（仅靠网关不路由隐式保护）；marketing 的 /inner/ 已带 InnerTokenFilter 校验，标准不统一。
 
 ## 2026-09-06 二期补充
 
-- **/marketing/shop/**（店铺券管理）同样受 c_end token 穿透影响**：ShopCouponController 对 X-Shop-Id<=0 一律拒绝（c_end 请求该 header 缺省 0），比 platform 的兜底严格；但根治仍需网关 AuthFilter 对 c_end 令牌执行角色拦截（同 2026-09-06 一期条目）。
+- ~~**/marketing/shop/**（店铺券管理）受 c_end token 穿透影响~~（✅ 2026-09-11 已随 `/app/**` 白名单化一并根治，见上）
 - **拆单回滚的子单取消**依赖 degel-order 的 updateInnerStatus（UPDATE 无 status=0 条件，仅靠 app 层 Redisson 锁互斥——一期已知问题），子单落库到回滚在同一请求内完成，无用户并发窗口，风险可控。
 
 ## 2026-09-06 三期补充

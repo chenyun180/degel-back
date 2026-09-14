@@ -21,6 +21,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -73,6 +76,13 @@ public class SpuSearchService {
             builder.withSort(org.elasticsearch.search.sort.SortBuilders.fieldSort("createTime")
                     .order(org.elasticsearch.search.sort.SortOrder.DESC));
         }
+        if (hasKeyword) {
+            // 关键词高亮 name：numberOfFragments(0) 返回整段字段值（商品名是短文本，不能截断成片段）
+            builder.withHighlightBuilder(new org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder()
+                    .field("name")
+                    .preTags("<em>").postTags("</em>")
+                    .numOfFragments(0));
+        }
 
         NativeSearchQuery query = builder.build();
         query.setTrackTotalHits(true);
@@ -83,10 +93,49 @@ public class SpuSearchService {
 
         Page<SpuListVo> result = new Page<>(p, size, hits.getTotalHits());
         result.setRecords(hits.getSearchHits().stream()
-                .map(SearchHit::getContent)
-                .map(this::toVo)
+                .map(hit -> {
+                    SpuListVo vo = toVo(hit.getContent());
+                    vo.setHighlightName(getHighlightName(hit));
+                    return vo;
+                })
                 .collect(Collectors.toList()));
         return result;
+    }
+
+    /** 取 name 高亮片段（numOfFragments(0) 时至多一条，即完整字段值）；无命中返回 null */
+    private String getHighlightName(SearchHit<SpuDocument> hit) {
+        List<String> fragments = hit.getHighlightField("name");
+        if (fragments == null || fragments.isEmpty()) {
+            return null;
+        }
+        return String.join("", fragments);
+    }
+
+    /**
+     * 搜索联想：对 name 做 match_phrase_prefix 前缀短语匹配（零 mapping 变更，无需重建索引）。
+     * 只出已上架+过审商品名；外层不 try-catch，由 Controller 统一兜（与 /spu/page 降级写法同风格）。
+     */
+    public List<String> suggest(String keyword, int size) {
+        if (StrUtil.isBlank(keyword)) {
+            return Collections.emptyList();
+        }
+        int s = Math.min(Math.max(size, 1), 10);
+        BoolQueryBuilder bool = QueryBuilders.boolQuery()
+                .filter(QueryBuilders.termQuery("status", 1))
+                .filter(QueryBuilders.termQuery("auditStatus", Constants.AUDIT_APPROVED))
+                .must(QueryBuilders.matchPhrasePrefixQuery("name", keyword));
+        // 多取一些，按同名去重后截断，保持相关性顺序
+        SearchHits<SpuDocument> hits = operations.search(
+                new NativeSearchQueryBuilder().withQuery(bool)
+                        .withPageable(PageRequest.of(0, s * 3))
+                        .build(),
+                SpuDocument.class);
+        return hits.getSearchHits().stream()
+                .map(hit -> hit.getContent().getName())
+                .filter(Objects::nonNull)
+                .distinct()
+                .limit(s)
+                .collect(Collectors.toList());
     }
 
     private SpuListVo toVo(SpuDocument doc) {

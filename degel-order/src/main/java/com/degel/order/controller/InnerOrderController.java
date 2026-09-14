@@ -88,6 +88,15 @@ public class InnerOrderController {
     }
 
     /**
+     * 批量自动确认收货（定时任务专用）：status=2 且发货超过 shipDays 天 → 已完成。
+     * 返回实际收货成功的订单 id
+     */
+    @PutMapping("/auto-receive")
+    public R<List<Long>> autoConfirmReceipts(@RequestParam(value = "shipDays", defaultValue = "7") int shipDays) {
+        return R.ok(orderInfoService.autoConfirmReceipts(shipDays));
+    }
+
+    /**
      * 按 userId 分页查询售后单
      */
     @GetMapping("/aftersale/page")

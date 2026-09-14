@@ -217,7 +217,7 @@ public class CartServiceImpl implements CartService {
             item.setShopId(sku.getShopId());
             item.setSpuName(spuName);
             item.setSkuSpec(skuSpec);
-            item.setSkuImage(fileUrl(sku.getImage()));
+            item.setSkuImage(pickSkuImage(sku.getImage(), spu));
             item.setPrice(sku.getPrice());
             item.setQuantity(cart.getQuantity());
             item.setStock(sku.getStock());
@@ -336,7 +336,7 @@ public class CartServiceImpl implements CartService {
         }
 
         if (sku != null) {
-            item.setSkuImage(fileUrl(sku.getImage()));
+            item.setSkuImage(pickSkuImage(sku.getImage(), spu));
             item.setPrice(sku.getPrice());
             item.setStock(sku.getStock());
             item.setSkuSpec(parseSkuSpec(sku.getSpecData()));
@@ -381,5 +381,13 @@ public class CartServiceImpl implements CartService {
             return key;
         }
         return fileBaseUrl + "/file/view/" + key;
+    }
+
+    /** SKU 图优先，为空回退 SPU 主图（存量 SKU 数据 image 字段普遍为空，2026-09-14 购物车部分图片不显示） */
+    private String pickSkuImage(String skuImage, ProductSpuVO spu) {
+        if (skuImage != null && !skuImage.isEmpty()) {
+            return fileUrl(skuImage);
+        }
+        return (spu != null) ? fileUrl(spu.getMainImage()) : null;
     }
 }

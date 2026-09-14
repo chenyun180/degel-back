@@ -35,6 +35,10 @@ public class ProductServiceImpl implements ProductService {
     private static final String CACHE_CATEGORY_TREE = "product:category:tree";
     private static final String CACHE_SPU_PREFIX = "product:spu:";
     private static final String CACHE_RECOMMEND_PREFIX = "product:recommend:page:";
+    /** 热搜词 ZSET：member=词 score=热度（DB1） */
+    private static final String CACHE_SEARCH_HOT = "product:search:hot";
+    private static final long HOT_ZSET_MAX = 1000;
+    private static final long HOT_TTL_DAYS = 7;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -101,7 +105,82 @@ public class ProductServiceImpl implements ProductService {
             return new Page<>(page, pageSize);
         }
 
-        return convertPage(result.getData());
+        IPage<AppSpuListVO> converted = convertPage(result.getData());
+        // 热搜词埋点：仅第一页且结果非空才计数（翻页不重复计热度，空结果不算"搜索成功"）；
+        // 异步执行 + 全流程吞异常，绝不能影响搜索主链路
+        if (Integer.valueOf(1).equals(page) && !CollectionUtils.isEmpty(converted.getRecords())) {
+            recordHotKeyword(keyword);
+        }
+        return converted;
+    }
+
+    // ==================== B-03+: 热搜词 / 搜索联想 ====================
+
+    @Override
+    public List<String> getHotKeywords(Integer limit) {
+        int n = (limit == null || limit < 1) ? 10 : Math.min(limit, 20);
+        try {
+            java.util.Set<Object> words = redisTemplate.opsForZSet().reverseRange(CACHE_SEARCH_HOT, 0, n - 1);
+            if (CollectionUtils.isEmpty(words)) {
+                return Collections.emptyList(); // 空榜单不缓存（既有约定）
+            }
+            return words.stream()
+                    .filter(String.class::isInstance).map(String.class::cast)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("[ProductServiceImpl] 热搜词读取失败", e);
+            return Collections.emptyList();
+        }
+    }
+
+    @Override
+    public List<String> getSearchSuggest(String keyword) {
+        String w = cleanKeyword(keyword);
+        if (w == null) {
+            return Collections.emptyList();
+        }
+        R<List<String>> result = productFeignClient.getSuggest(w, 5);
+        if (result == null || result.getCode() != 200 || result.getData() == null) {
+            // 联想是增强功能：降级/失败静默返回空列表
+            return Collections.emptyList();
+        }
+        return result.getData();
+    }
+
+    /** 热搜词记录：清洗 → ZINCRBY → 裁剪 + 滑动续期；异步 + 吞异常，不影响搜索主链路 */
+    private void recordHotKeyword(String keyword) {
+        final String word = cleanKeyword(keyword);
+        if (word == null) {
+            return;
+        }
+        CompletableFuture.runAsync(() -> {
+            try {
+                redisTemplate.opsForZSet().incrementScore(CACHE_SEARCH_HOT, word, 1);
+                Long size = redisTemplate.opsForZSet().zCard(CACHE_SEARCH_HOT);
+                if (size != null && size > HOT_ZSET_MAX) {
+                    // 移除热度最低的尾巴，只保留前 1000
+                    redisTemplate.opsForZSet().removeRange(CACHE_SEARCH_HOT, 0, size - HOT_ZSET_MAX - 1);
+                }
+                redisTemplate.expire(CACHE_SEARCH_HOT, HOT_TTL_DAYS, TimeUnit.DAYS);
+            } catch (Exception e) {
+                log.warn("[ProductServiceImpl] 热搜词记录失败，word={}", word, e);
+            }
+        });
+    }
+
+    /**
+     * 关键词清洗：trim、压缩连续空白、限长 1~30、必须含字母/数字/汉字（过滤纯符号/表情）。
+     * 全链路 ES/Redis 均为值传递无拼接面，清洗只为榜单质量与成员卫生。
+     */
+    private String cleanKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String w = keyword.trim().replaceAll("\\s+", " ");
+        if (w.isEmpty() || w.length() > 30) {
+            return null;
+        }
+        return w.matches(".*[\\p{L}\\p{N}].*") ? w : null;
     }
 
     // ==================== 推荐（按销量） ====================
@@ -151,6 +230,7 @@ public class ProductServiceImpl implements ProductService {
         AppSpuListVO vo = new AppSpuListVO();
         vo.setSpuId(spu.getId());
         vo.setName(spu.getName());
+        vo.setHighlightName(spu.getHighlightName());
         vo.setMainImage(fileUrl(spu.getMainImage()));
         vo.setMinPrice(spu.getMinPrice());
         vo.setSaleCount(spu.getSaleCount());

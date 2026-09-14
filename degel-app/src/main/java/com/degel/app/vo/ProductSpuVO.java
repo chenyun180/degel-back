@@ -18,6 +18,9 @@ public class ProductSpuVO {
 
     private String name;
 
+    /** ES 搜索高亮名（仅 /spu/page 关键词搜索返回，含 <em> 标签；其余路径为 null） */
+    private String highlightName;
+
     private String subtitle;
 
     private String mainImage;

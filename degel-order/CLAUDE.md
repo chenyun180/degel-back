@@ -25,6 +25,14 @@
 | OrderController | (根) | GET /list、GET /{id}、PUT /deliver |
 | AfterSaleController | /after-sale | GET /list、PUT /handle、PUT /confirm-receive |
 | PlatformDashboardController | /platform/dashboard | GET /overview、GET /trend（仅 admin token，网关 admin-urls 拦截 shop token，e2e 有用例覆盖） |
+| ShopReviewController | /review | GET /list、PUT /reply（店铺评价管理，X-Shop-Id 归属校验，一评仅一回复） |
+| InnerReviewController | /inner/review | POST、GET /spu/{id}、GET /mine、GET /reviewed-item-ids（C 端 BFF 专用） |
+
+## 评价（order_review，2026-09-12）
+
+- 评价挂 order_item 维度（uk_order_item 一明细一评），仅订单 status=3 可评；spu_name/sku_spec 为快照
+- 评分冗余：写入后全量重算该 SPU 的 avg/count，经 Feign 回写 degel-product `/inner/spu/rating`（product_spu.rating_avg/rating_count）；回写失败仅记日志，下次评价自动重算覆盖
+- 自动确认收货：`PUT /inner/order/auto-receive?shipDays=7`（幂等 UPDATE WHERE status=2），由 degel-app 的 OrderAutoReceiveTask 每小时触发
 
 ## 注意事项
 

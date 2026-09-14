@@ -32,4 +32,14 @@ public interface IProductSpuService extends IService<ProductSpu> {
     void toggleStatus(Long id, Long shopId);
 
     void updateStock(StockUpdateVo vo, Long shopId);
+
+    /**
+     * 回写商品评分冗余（degel-order 评价写入后调用，幂等覆盖）
+     */
+    void updateRating(Long spuId, java.math.BigDecimal ratingAvg, Integer ratingCount);
+
+    /**
+     * 按 id 批量取 SPU 主图（内部接口用；不存在的 id 静默跳过）
+     */
+    List<SpuImageVo> listImagesByIds(List<Long> spuIds);
 }

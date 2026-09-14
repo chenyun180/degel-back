@@ -14,9 +14,8 @@ import javax.validation.Valid;
 /**
  * 平台券管理（经网关 /marketing/platform/**，admin-urls 限平台角色）。
  *
- * ⚠️ 已知问题（记 docs/known-issues.md）：网关对 c_end token 不做 admin-urls 校验，
- * C 端令牌可穿透到本 controller。X-Shop-Id==0 校验只是弱兜底（c_end 请求该 header 缺省也是 0），
- * 根治需网关 AuthFilter 对 c_end 令牌也执行 admin-urls 拦截——不在本期范围。
+ * 网关安全：AuthFilter 已将 c_end 令牌限制在 /app/**（2026-09-11 根治，见 known-issues），
+ * 本 controller 不再依赖 X-Shop-Id==0 弱兜底作为唯一防线。
  */
 @RestController
 @RequestMapping("/platform/coupon")

@@ -60,6 +60,22 @@ public class ProductSpuController {
     }
 
     /**
+     * 搜索联想（C 端 BFF 专用：degel-app 经 Feign 调用）。
+     * ES 异常静默返回空列表——联想是锦上添花，失败不能影响搜索主链路，也无需 MySQL 降级。
+     */
+    @GetMapping("/suggest")
+    public R<List<String>> suggest(
+            @RequestParam("keyword") String keyword,
+            @RequestParam(defaultValue = "5") Integer size) {
+        try {
+            return R.ok(spuSearchService.suggest(keyword, size));
+        } catch (Exception e) {
+            log.warn("ES 联想不可用，返回空: {}", e.getMessage());
+            return R.ok(java.util.Collections.emptyList());
+        }
+    }
+
+    /**
      * 全量重建 ES 索引（平台管理动作，网关侧已限平台角色）。
      *
      * @param recreate true=先删索引按当前 mapping 重建（切换分词器/mapping 变更后用），

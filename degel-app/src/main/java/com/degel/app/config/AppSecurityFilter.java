@@ -54,7 +54,9 @@ public class AppSecurityFilter extends OncePerRequestFilter {
      */
     private static final List<String> PUBLIC_PREFIXES = Collections.unmodifiableList(Arrays.asList(
             "/app/auth/",
-            "/app/product/"
+            "/app/product/",
+            // 商品评价列表（商品详情页匿名可看；写评价仍在鉴权范围）
+            "/app/review/list"
     ));
 
     @Override

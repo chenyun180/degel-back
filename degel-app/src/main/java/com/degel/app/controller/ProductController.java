@@ -49,6 +49,25 @@ public class ProductController {
     }
 
     /**
+     * 热搜词榜（无需登录；Redis ZSET 全局热度）
+     * GET /app/product/search/hot?limit=10
+     */
+    @GetMapping("/search/hot")
+    public R<List<String>> getHotKeywords(
+            @RequestParam(value = "limit", defaultValue = "10") Integer limit) {
+        return R.ok(productService.getHotKeywords(limit));
+    }
+
+    /**
+     * 搜索联想（无需登录；ES 异常/降级时返回空列表）
+     * GET /app/product/search/suggest?keyword=xx
+     */
+    @GetMapping("/search/suggest")
+    public R<List<String>> getSearchSuggest(@RequestParam("keyword") String keyword) {
+        return R.ok(productService.getSearchSuggest(keyword));
+    }
+
+    /**
      * B-04：获取商品详情
      * GET /app/product/{spuId}
      */

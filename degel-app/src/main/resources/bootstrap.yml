@@ -8,6 +8,8 @@ spring:
     nacos:
       discovery:
         server-addr: 192.168.1.14:8848
+        # 固定注册地址：本机 IP 变化后旧注册 IP 失效，服务间 Feign 调用会 502；本机集群统一走 127.0.0.1
+        ip: 127.0.0.1
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
@@ -53,3 +55,13 @@ feign:
         read-timeout: 5000
   circuitbreaker:
     enabled: true
+
+# circuitbreaker.enabled=true 后 Feign 调用被 resilience4j TimeLimiter 包裹，
+# 不配置时默认 1s 超时，比上面的 read-timeout 更先触发，负载抖动会造成
+# "服务端已提交、客户端报降级"的假故障（2026-09-14 评价提交实际入库但前端报错）。
+# 此处对齐 read-timeout。
+resilience4j:
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 5s

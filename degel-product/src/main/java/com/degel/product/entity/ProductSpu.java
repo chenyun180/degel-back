@@ -28,4 +28,9 @@ public class ProductSpu extends BaseEntity {
     private Long auditorId;
     private LocalDateTime auditTime;
     private Integer status;
+
+    /** 平均评分 0.0-5.0（评价写入后由 degel-order 冗余回写） */
+    private java.math.BigDecimal ratingAvg;
+    /** 评价数 */
+    private Integer ratingCount;
 }

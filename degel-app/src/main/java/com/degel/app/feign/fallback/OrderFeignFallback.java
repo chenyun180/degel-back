@@ -51,6 +51,12 @@ public class OrderFeignFallback implements OrderFeignClient {
     }
 
     @Override
+    public R<List<Long>> autoConfirmReceipts(Integer shipDays) {
+        log.error("[OrderFeignFallback] autoConfirmReceipts 降级");
+        return R.fail(50001, "订单服务暂不可用");
+    }
+
+    @Override
     public R<Long> createAfterSale(AfterSaleCreateInnerReqVO reqVO) {
         log.error("[OrderFeignFallback] createAfterSale 降级");
         return R.fail(50001, "订单服务暂不可用，请稍后重试");

@@ -41,4 +41,14 @@ public interface ProductService {
      * @param pageSize 每页大小
      */
     IPage<AppSpuListVO> getRecommendList(Integer page, Integer pageSize);
+
+    /**
+     * 热搜词榜（Redis ZSET，取前 N；异常/空榜单返回空列表）
+     */
+    List<String> getHotKeywords(Integer limit);
+
+    /**
+     * 搜索联想（空词/失败/降级一律静默返回空列表）
+     */
+    List<String> getSearchSuggest(String keyword);
 }
