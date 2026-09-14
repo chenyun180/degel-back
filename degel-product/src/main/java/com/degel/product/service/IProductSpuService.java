@@ -42,4 +42,9 @@ public interface IProductSpuService extends IService<ProductSpu> {
      * 按 id 批量取 SPU 主图（内部接口用；不存在的 id 静默跳过）
      */
     List<SpuImageVo> listImagesByIds(List<Long> spuIds);
+
+    /**
+     * 按 id 批量查 SPU 列表信息（内部接口用，收藏/足迹展示；不存在的 id 静默跳过）
+     */
+    List<SpuListVo> listVoByIds(List<Long> spuIds);
 }

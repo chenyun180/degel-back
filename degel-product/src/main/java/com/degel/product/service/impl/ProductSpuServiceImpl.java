@@ -411,4 +411,36 @@ public class ProductSpuServiceImpl extends ServiceImpl<ProductSpuMapper, Product
                 })
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public List<SpuListVo> listVoByIds(List<Long> spuIds) {
+        if (spuIds == null || spuIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        // 逻辑删除由 @TableLogic 自动过滤，查不到的 id 由调用方按"已失效"处理。
+        // 价格/库存为实时聚合（对齐 pageSpu），列表页展示场景 N+1 可接受（页大小 ≤50）
+        return listByIds(spuIds).stream()
+                .map(spu -> {
+                    List<ProductSku> skuList = skuService.listBySpuId(spu.getId());
+                    BigDecimal minPrice = skuList.stream()
+                            .map(ProductSku::getPrice)
+                            .filter(java.util.Objects::nonNull)
+                            .min(BigDecimal::compareTo)
+                            .orElse(null);
+                    SpuListVo vo = new SpuListVo();
+                    vo.setId(spu.getId());
+                    vo.setShopId(spu.getShopId());
+                    vo.setCategoryId(spu.getCategoryId());
+                    vo.setName(spu.getName());
+                    vo.setSubtitle(spu.getSubtitle());
+                    vo.setMainImage(spu.getMainImage());
+                    vo.setAuditStatus(spu.getAuditStatus());
+                    vo.setStatus(spu.getStatus());
+                    vo.setSaleCount(spu.getSaleCount());
+                    vo.setMinPrice(minPrice);
+                    vo.setCreateTime(spu.getCreateTime());
+                    return vo;
+                })
+                .collect(Collectors.toList());
+    }
 }

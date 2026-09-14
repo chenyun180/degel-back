@@ -78,10 +78,17 @@ public interface ProductFeignClient {
     R<List<ProductSkuVO>> batchGetSku(@RequestBody List<Long> skuIds);
 
     /**
-     * 批量取 SPU 主图（评价列表等展示场景，内部接口）
+     * 批量取 SPU 主图（内部接口）。注意：product 侧实际只返回 id + mainImage 两个字段
+     * （SpuImageVo），此处声明的 ProductSpuVO 其余字段均为 null——需要完整信息用 batchGetSpu
      */
     @PostMapping("/inner/spu/batch-images")
     R<List<ProductSpuVO>> batchGetSpuImages(@RequestBody List<Long> spuIds);
+
+    /**
+     * 批量查 SPU 列表信息（收藏/足迹展示，返回实时名称/价格/主图/状态；不存在的 id 跳过）
+     */
+    @PostMapping("/inner/spu/batch")
+    R<List<ProductSpuVO>> batchGetSpu(@RequestBody List<Long> spuIds);
 
     /**
      * 搜索联想（product 侧 ES 异常自行吞掉返回空列表；Feign 级故障走 fallback 返回 fail）

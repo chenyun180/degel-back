@@ -4,6 +4,7 @@ import com.degel.common.core.R;
 import com.degel.product.service.IProductSpuService;
 import com.degel.product.vo.InnerRatingVo;
 import com.degel.product.vo.SpuImageVo;
+import com.degel.product.vo.SpuListVo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -29,6 +30,15 @@ public class InnerSpuController {
     @PostMapping("/batch-images")
     public R<List<SpuImageVo>> batchImages(@RequestBody List<Long> spuIds) {
         return R.ok(spuService.listImagesByIds(spuIds));
+    }
+
+    /**
+     * 批量查 SPU 列表信息（收藏/足迹等展示场景，返回实时状态与价格；
+     * 不存在的 id 静默跳过，@TableLogic 已过滤逻辑删除）
+     */
+    @PostMapping("/batch")
+    public R<List<SpuListVo>> batch(@RequestBody List<Long> spuIds) {
+        return R.ok(spuService.listVoByIds(spuIds));
     }
 
     /**

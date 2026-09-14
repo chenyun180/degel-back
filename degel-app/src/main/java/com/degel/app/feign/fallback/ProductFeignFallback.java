@@ -58,6 +58,12 @@ public class ProductFeignFallback implements ProductFeignClient {
     }
 
     @Override
+    public R<List<ProductSpuVO>> batchGetSpu(List<Long> spuIds) {
+        log.error("[ProductFeignFallback] batchGetSpu 降级，spuIds={}", spuIds);
+        return R.fail(50001, "商品服务暂不可用");
+    }
+
+    @Override
     public R<List<String>> getSuggest(String keyword, Integer size) {
         log.error("[ProductFeignFallback] getSuggest 降级，keyword={}", keyword);
         return R.fail(50001, "搜索联想服务暂不可用");

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.app.feign.ProductFeignClient;
+import com.degel.app.context.UserContext;
+import com.degel.app.service.FootprintService;
 import com.degel.app.service.ProductService;
 import com.degel.app.vo.*;
 import com.degel.common.core.Constants;
@@ -44,6 +46,7 @@ public class ProductServiceImpl implements ProductService {
 
     private final ProductFeignClient productFeignClient;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final FootprintService footprintService;
 
     /**
      * 文件访问基地址（网关）。库里存 objectKey（不含 host），C 端小程序无法用相对路径，
@@ -339,6 +342,10 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.toList());
 
         detail.setSkuList(appSkuVOList);
+
+        // 7. 浏览足迹埋点（登录用户才记录；详情页在公开前缀下，匿名访问 UserContext 为 null）
+        footprintService.record(UserContext.getUserId(), spuId);
+
         return detail;
     }
 }
