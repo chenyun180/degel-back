@@ -78,7 +78,8 @@ public class AppSecurityFilter extends OncePerRequestFilter {
                     writeUnauthorized(response, "登录已过期，请重新登录");
                     return;
                 } catch (Exception e) {
-                    log.error("[AppSecurityFilter] JWT 解析异常 path={}", path, e);
+                    // 客户端坏 token 属常态输入（不带堆栈，避免刷屏 ERROR 淹没真实故障）
+                    log.warn("[AppSecurityFilter] JWT 解析失败 path={} msg={}", path, e.getMessage());
                     writeUnauthorized(response, "无效的访问令牌");
                     return;
                 }

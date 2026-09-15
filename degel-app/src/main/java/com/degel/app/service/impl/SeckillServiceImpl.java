@@ -44,7 +44,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -720,10 +720,13 @@ public class SeckillServiceImpl implements SeckillService {
         return LocalDateTime.parse(time, TS).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
-    /** 订单号：yyyyMMddHHmmss + userId末4位 + 4位随机数（同 OrderServiceImpl） */
+    /** 订单号序列（进程内自增，见 generateOrderNo；与 OrderServiceImpl 同实现） */
+    private static final AtomicLong ORDER_SEQ = new AtomicLong();
+
+    /** 订单号：yyyyMMddHHmmssSSS + userId末4位 + 5位自增序列（同 OrderServiceImpl） */
     private String generateOrderNo(Long userId) {
-        String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        return dateStr + String.format("%04d", userId % 10000) + String.format("%04d", new Random().nextInt(10000));
+        String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+        return dateStr + String.format("%04d", userId % 10000) + String.format("%05d", ORDER_SEQ.incrementAndGet() % 100000);
     }
 
     /** objectKey → 绝对 URL；存量完整 URL 原样放行（同 BannerServiceImpl） */

@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -408,11 +409,19 @@ public class OrderServiceImpl implements OrderService {
     /**
      * 生成订单号：yyyyMMddHHmmss + userId末4位 + 4位随机数
      */
+    /** 订单号序列（进程内自增，见 generateOrderNo） */
+    private static final AtomicLong ORDER_SEQ = new AtomicLong();
+
+    /**
+     * 订单号：yyyyMMddHHmmssSSS + userId末4位 + 5位自增序列（10万回绕），共26位（列宽 varchar(32)）。
+     * 旧格式秒级时间+4位随机：同用户同秒两单有 1/10000 撞 uk_order_no 的概率，
+     * 撞号时 createInnerOrder 幂等返回旧单 id，新单静默丢失但库存已扣。
+     */
     private String generateOrderNo(Long userId) {
-        String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String userSuffix = String.format("%04d", userId % 10000);
-        String randomSuffix = String.format("%04d", new Random().nextInt(10000));
-        return dateStr + userSuffix + randomSuffix;
+        String seqSuffix = String.format("%05d", ORDER_SEQ.incrementAndGet() % 100000);
+        return dateStr + userSuffix + seqSuffix;
     }
 
     // =========================================================
