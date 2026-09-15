@@ -12,6 +12,8 @@ public class OrderListVo {
     private Long id;
     private String orderNo;
     private Long shopId;
+    /** 订单类型：0=普通 1=秒杀 */
+    private Integer orderType;
     private BigDecimal payAmount;
     private Integer status;
     private String firstItemName;

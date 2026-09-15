@@ -34,6 +34,13 @@ public interface OrderFeignClient {
     R<OrderInfoVO> getOrder(@PathVariable("orderId") Long orderId);
 
     /**
+     * 按订单号精确查询订单（内部；不存在返回 null data）。
+     * 秒杀建单 Feign 超时/降级后的补偿反查用，防"实际已落库却补偿"导致超卖
+     */
+    @GetMapping("/no/{orderNo}")
+    R<OrderInfoVO> getOrderByNo(@PathVariable("orderNo") String orderNo);
+
+    /**
      * 分页查询订单列表（内部）
      */
     /**

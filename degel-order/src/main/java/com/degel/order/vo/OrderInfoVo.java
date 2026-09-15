@@ -18,6 +18,8 @@ public class OrderInfoVo {
     private String orderNo;
     private Long userId;
     private Long shopId;
+    /** 订单类型：0=普通 1=秒杀 */
+    private Integer orderType;
     private BigDecimal totalAmount;
     private BigDecimal freightAmount;
     private BigDecimal discountAmount;

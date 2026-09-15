@@ -56,7 +56,11 @@ public class AppSecurityFilter extends OncePerRequestFilter {
             "/app/auth/",
             "/app/product/",
             // 商品评价列表（商品详情页匿名可看；写评价仍在鉴权范围）
-            "/app/review/list"
+            "/app/review/list",
+            // 首页轮播图（匿名可看，营销位只读展示）
+            "/app/banner/",
+            // 秒杀场次列表（仅场次/商品展示匿名可看；reserve/order/cancel 仍在鉴权范围）
+            "/app/seckill/sessions"
     ));
 
     @Override

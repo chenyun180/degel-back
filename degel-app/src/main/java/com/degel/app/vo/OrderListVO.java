@@ -16,6 +16,8 @@ public class OrderListVO {
     private Long orderId;
     /** 订单编号 */
     private String orderNo;
+    /** 订单类型：0普通 1秒杀 */
+    private Integer orderType;
     /**
      * 订单状态：0待付款 1待发货 2待收货 3已完成 4已取消 5已退款
      */

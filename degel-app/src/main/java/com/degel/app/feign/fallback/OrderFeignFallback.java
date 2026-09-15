@@ -33,6 +33,12 @@ public class OrderFeignFallback implements OrderFeignClient {
     }
 
     @Override
+    public R<OrderInfoVO> getOrderByNo(String orderNo) {
+        log.error("[OrderFeignFallback] getOrderByNo orderNo={} 降级", orderNo);
+        return R.fail(50001, "订单服务暂不可用，请稍后重试");
+    }
+
+    @Override
     public R<Page<OrderInfoVO>> pageOrders(Long userId, Integer status, Integer page, Integer pageSize) {
         log.error("[OrderFeignFallback] pageOrders 降级");
         return R.fail(50001, "订单服务暂不可用，请稍后重试");

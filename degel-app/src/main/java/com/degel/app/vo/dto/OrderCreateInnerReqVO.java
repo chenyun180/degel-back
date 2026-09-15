@@ -12,6 +12,8 @@ public class OrderCreateInnerReqVO {
 
     private Long userId;
     private Long shopId;
+    /** 订单类型：0=普通（默认，不传即普通） 1=秒杀 */
+    private Integer orderType;
     private String orderNo;
     private java.math.BigDecimal totalAmount;
     private java.math.BigDecimal freightAmount;

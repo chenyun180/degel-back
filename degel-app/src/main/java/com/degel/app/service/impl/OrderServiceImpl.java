@@ -440,6 +440,7 @@ public class OrderServiceImpl implements OrderService {
         OrderListVO vo = new OrderListVO();
         vo.setOrderId(orderInfoVO.getId());
         vo.setOrderNo(orderInfoVO.getOrderNo());
+        vo.setOrderType(orderInfoVO.getOrderType());
         vo.setStatus(orderInfoVO.getStatus());
         vo.setStatusDesc(getStatusDesc(orderInfoVO.getStatus()));
         vo.setPayAmount(orderInfoVO.getPayAmount());
@@ -493,6 +494,7 @@ public class OrderServiceImpl implements OrderService {
         OrderDetailVO vo = new OrderDetailVO();
         vo.setOrderId(info.getId());
         vo.setOrderNo(info.getOrderNo());
+        vo.setOrderType(info.getOrderType());
         vo.setStatus(info.getStatus());
         vo.setStatusDesc(getStatusDesc(info.getStatus()));
         vo.setRemark(info.getRemark());

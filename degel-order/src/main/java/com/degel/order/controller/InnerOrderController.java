@@ -49,6 +49,14 @@ public class InnerOrderController {
     }
 
     /**
+     * 按订单号精确查询订单（含明细；不存在返回 null data）
+     */
+    @GetMapping("/no/{orderNo}")
+    public R<OrderInfoVo> getOrderByNo(@PathVariable("orderNo") String orderNo) {
+        return R.ok(orderInfoService.getInnerOrderByOrderNo(orderNo));
+    }
+
+    /**
      * 按 userId 分页查询订单列表
      */
     @GetMapping("/page")

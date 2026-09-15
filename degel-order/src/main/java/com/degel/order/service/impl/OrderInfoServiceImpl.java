@@ -65,6 +65,7 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
             vo.setId(order.getId());
             vo.setOrderNo(order.getOrderNo());
             vo.setShopId(order.getShopId());
+            vo.setOrderType(order.getOrderType());
             vo.setPayAmount(order.getPayAmount());
             vo.setStatus(order.getStatus());
             vo.setCreateTime(order.getCreateTime());
@@ -130,10 +131,20 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createInnerOrder(OrderCreateInnerVo vo) {
+        // 幂等：degel-app 的建单 Feign 超时/降级后可能重试或反查再补偿，订单可能已落库
+        //（uk_order_no 唯一索引兜底）。已存在直接返回原订单 id，不重复落库（防超卖）
+        OrderInfo existing = getOne(new LambdaQueryWrapper<OrderInfo>()
+                .eq(OrderInfo::getOrderNo, vo.getOrderNo()));
+        if (existing != null) {
+            return existing.getId();
+        }
+
         OrderInfo order = new OrderInfo();
         order.setOrderNo(vo.getOrderNo());
         order.setUserId(vo.getUserId());
         order.setShopId(vo.getShopId());
+        // 订单类型：调用方未传按普通订单落库（order_type 列 DEFAULT 0，显式赋值防 null 覆盖语义）
+        order.setOrderType(vo.getOrderType() == null ? 0 : vo.getOrderType());
         order.setTotalAmount(vo.getTotalAmount());
         order.setFreightAmount(vo.getFreightAmount());
         order.setDiscountAmount(vo.getDiscountAmount());
@@ -177,6 +188,16 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
             return null;
         }
         return toInnerVo(order, orderItemService.listByOrderId(orderId));
+    }
+
+    @Override
+    public OrderInfoVo getInnerOrderByOrderNo(String orderNo) {
+        OrderInfo order = getOne(new LambdaQueryWrapper<OrderInfo>()
+                .eq(OrderInfo::getOrderNo, orderNo));
+        if (order == null) {
+            return null;
+        }
+        return toInnerVo(order, orderItemService.listByOrderId(order.getId()));
     }
 
     @Override
@@ -304,6 +325,7 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         vo.setOrderNo(order.getOrderNo());
         vo.setUserId(order.getUserId());
         vo.setShopId(order.getShopId());
+        vo.setOrderType(order.getOrderType());
         vo.setTotalAmount(order.getTotalAmount());
         vo.setFreightAmount(order.getFreightAmount());
         vo.setDiscountAmount(order.getDiscountAmount());

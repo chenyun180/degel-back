@@ -33,6 +33,12 @@ public interface IOrderInfoService extends IService<OrderInfo> {
     OrderInfoVo getInnerOrder(Long orderId);
 
     /**
+     * 按订单号精确查订单（含明细；不存在返回 null）。
+     * 秒杀建单 Feign 超时/降级后的补偿反查用，防"实际已落库却补偿"导致超卖
+     */
+    OrderInfoVo getInnerOrderByOrderNo(String orderNo);
+
+    /**
      * 按 userId 分页查订单列表（含明细）
      */
     IPage<OrderInfoVo> pageInnerOrders(Long userId, Integer status, Integer page, Integer pageSize);

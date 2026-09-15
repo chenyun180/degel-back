@@ -14,6 +14,8 @@ public class OrderCreateInnerVo {
 
     private Long userId;
     private Long shopId;
+    /** 订单类型：0=普通（默认） 1=秒杀 */
+    private Integer orderType;
     private String orderNo;
     private BigDecimal totalAmount;
     private BigDecimal freightAmount;
