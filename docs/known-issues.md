@@ -55,4 +55,4 @@
 
 - **补贴报表售后不冲减**：平台「本月平台补贴」/ 店铺「本月店铺补贴」按已支付口径（status IN (1,2,3,5)）统计，整单退款后补贴不回冲，数值略偏高。精确对账需 mk_subsidy_ledger 流水（设计 §6 预留，未实施）。
 - **分摊折扣券出资比例是近似**：基于创建端"预期减免额"拆分，每单按比例分实算优惠，非逐单精算（设计 §4.1 口径）。
-- **店铺看板 today-overview 空壳（既有）**：degel-product DashboardService.getTodayOverview 的 GMV/订单数恒 0（数据在 degel_order 库）；三期补贴数走 order 新端点 /order/shop/dashboard/subsidy-summary 绕开此问题，但看板其余指标仍空——待专项重构。
+- ~~**店铺看板 today-overview 空壳（既有）**~~（✅ 2026-09-16 已修复并实测：degel-order 新增 `GET /shop/dashboard/overview`（今日/昨日/本月 GMV、订单数、待发货、待处理售后，店铺维度、已支付口径同平台看板），前端店铺看板直连；product 侧恒 0 的 `/today-overview` 端点与 PendingCountsVo 里假的待发货/待售后字段已删（待办拆为订单域+商品域双接口）。今日访客卡片无任何真实数据源（view_count 是累计浏览量），已替换为本月 GMV 卡片）

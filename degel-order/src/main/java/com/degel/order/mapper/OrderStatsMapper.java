@@ -77,4 +77,49 @@ public interface OrderStatsMapper {
             + "GROUP BY DATE_FORMAT(pay_time, '%Y-%m-%d') "
             + "ORDER BY date")
     List<DailyGmvVo> selectDailyGmv(@Param("days") int days);
+
+    // ==================== 店铺工作台看板（店铺维度） ====================
+
+    /** 店铺今日流水 */
+    @Select("SELECT IFNULL(SUM(pay_amount), 0) FROM order_info "
+            + "WHERE del_flag = 0 AND status IN (1,2,3,5) AND pay_time >= CURDATE() "
+            + "AND shop_id = #{shopId}")
+    BigDecimal sumTodayGmvByShop(@Param("shopId") Long shopId);
+
+    /** 店铺今日订单数 */
+    @Select("SELECT COUNT(*) FROM order_info "
+            + "WHERE del_flag = 0 AND status IN (1,2,3,5) AND pay_time >= CURDATE() "
+            + "AND shop_id = #{shopId}")
+    Integer countTodayOrdersByShop(@Param("shopId") Long shopId);
+
+    /** 店铺昨日流水 */
+    @Select("SELECT IFNULL(SUM(pay_amount), 0) FROM order_info "
+            + "WHERE del_flag = 0 AND status IN (1,2,3,5) "
+            + "AND pay_time >= DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND pay_time < CURDATE() "
+            + "AND shop_id = #{shopId}")
+    BigDecimal sumYesterdayGmvByShop(@Param("shopId") Long shopId);
+
+    /** 店铺昨日订单数 */
+    @Select("SELECT COUNT(*) FROM order_info "
+            + "WHERE del_flag = 0 AND status IN (1,2,3,5) "
+            + "AND pay_time >= DATE_SUB(CURDATE(), INTERVAL 1 DAY) AND pay_time < CURDATE() "
+            + "AND shop_id = #{shopId}")
+    Integer countYesterdayOrdersByShop(@Param("shopId") Long shopId);
+
+    /** 店铺本月流水 */
+    @Select("SELECT IFNULL(SUM(pay_amount), 0) FROM order_info "
+            + "WHERE del_flag = 0 AND status IN (1,2,3,5) "
+            + "AND pay_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01') "
+            + "AND shop_id = #{shopId}")
+    BigDecimal sumMonthGmvByShop(@Param("shopId") Long shopId);
+
+    /** 店铺待发货订单数（已付款待发货） */
+    @Select("SELECT COUNT(*) FROM order_info "
+            + "WHERE del_flag = 0 AND status = 1 AND shop_id = #{shopId}")
+    Integer countPendingShipByShop(@Param("shopId") Long shopId);
+
+    /** 店铺待处理售后数（待审核） */
+    @Select("SELECT COUNT(*) FROM order_after_sale "
+            + "WHERE del_flag = 0 AND status = 0 AND shop_id = #{shopId}")
+    Integer countPendingAfterSaleByShop(@Param("shopId") Long shopId);
 }

@@ -6,13 +6,11 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.common.core.Constants;
 import com.degel.product.entity.ProductSku;
 import com.degel.product.entity.ProductSpu;
-import com.degel.product.vo.DashboardOverviewVo;
 import com.degel.product.vo.PendingCountsVo;
 import com.degel.product.vo.StockWarningVo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -24,18 +22,6 @@ public class DashboardService {
 
     private final IProductSpuService spuService;
     private final IProductSkuService skuService;
-
-    public DashboardOverviewVo getTodayOverview(Long shopId) {
-        // ⚠️ 空壳实现：GMV/订单数属 degel_order 库，product 服务无法计算，恒返回 0。
-        // 真实的流水/订单数据在 degel-order 的 /platform/dashboard/overview（平台维度）。
-        DashboardOverviewVo vo = new DashboardOverviewVo();
-        vo.setTodayGmv(BigDecimal.ZERO);
-        vo.setTodayOrderCount(0);
-        vo.setTodayVisitorCount(0);
-        vo.setYesterdayGmv(BigDecimal.ZERO);
-        vo.setYesterdayOrderCount(0);
-        return vo;
-    }
 
     public IPage<StockWarningVo> getStockWarnings(Page<?> page, Long shopId) {
         List<Long> spuIds = spuService.list(new LambdaQueryWrapper<ProductSpu>()
@@ -89,8 +75,6 @@ public class DashboardService {
 
     public PendingCountsVo getPendingCounts(Long shopId) {
         PendingCountsVo vo = new PendingCountsVo();
-        vo.setPendingShipment(0);
-        vo.setPendingAfterSale(0);
         // shopId=0/null 为平台用户（网关注入 X-Shop-Id=0），不加店铺过滤即全平台维度
         boolean filterShop = shopId != null && shopId > 0;
 
