@@ -5,9 +5,11 @@ import com.degel.app.vo.dto.InnerRefundReqVO;
 import com.degel.common.core.R;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -37,5 +39,11 @@ public class InnerPayController {
     public R<Long> refund(@RequestBody @Validated InnerRefundReqVO reqVO) {
         Long payLogId = payService.refund(reqVO);
         return R.ok(payLogId);
+    }
+
+    /** 订单是否已有退款流水（degel-order 对账补偿任务用） */
+    @GetMapping("/refund/exists")
+    public R<Boolean> refundExists(@RequestParam Long orderId) {
+        return R.ok(payService.existsRefund(orderId));
     }
 }

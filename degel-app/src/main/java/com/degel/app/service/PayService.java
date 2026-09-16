@@ -37,4 +37,9 @@ public interface PayService {
      * @return 退款流水ID
      */
     Long refund(InnerRefundReqVO reqVO);
+
+    /**
+     * 指定订单是否已有退款流水（degel-order 对账补偿用，判断 best-effort 写入是否失败）
+     */
+    boolean existsRefund(Long orderId);
 }

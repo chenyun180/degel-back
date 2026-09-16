@@ -193,4 +193,13 @@ public class PayServiceImpl implements PayService {
         mallPaymentLogMapper.insert(payLog);
         return payLog.getId();
     }
+
+    @Override
+    public boolean existsRefund(Long orderId) {
+        return mallPaymentLogMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MallPaymentLog>()
+                        .eq(MallPaymentLog::getOrderId, orderId)
+                        .eq(MallPaymentLog::getDirection, "refund"))
+                > 0;
+    }
 }

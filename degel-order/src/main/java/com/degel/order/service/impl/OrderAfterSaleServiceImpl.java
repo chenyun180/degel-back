@@ -140,6 +140,47 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         }
     }
 
+    /**
+     * 退款流水对账补偿（每 10 分钟）：退款完成（status=3）但 mall_payment_log 无 refund
+     * 流水的单子补写——兜住 sendRefundLog best-effort 失败（Feign/Redis 抖动）的漏网。
+     * 幂等：先查 exists 再写；只扫近 30 天（窗口外的老单人工处理）；
+     * 单轮上限 200 防 Feign 风暴。同一单多条 status=3 历史（拒绝后重申请）按订单去重补一条。
+     */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 600_000L, initialDelay = 120_000L)
+    public void reconcileRefundLogs() {
+        try {
+            java.time.LocalDateTime since = java.time.LocalDateTime.now().minusDays(30);
+            java.util.List<OrderAfterSale> done = this.list(new LambdaQueryWrapper<OrderAfterSale>()
+                    .eq(OrderAfterSale::getStatus, 3)
+                    .ge(OrderAfterSale::getUpdateTime, since)
+                    .orderByAsc(OrderAfterSale::getId)
+                    .last("LIMIT 200"));
+            java.util.Set<Long> seen = new java.util.HashSet<>();
+            int repaired = 0;
+            for (OrderAfterSale s : done) {
+                if (!seen.add(s.getOrderId())) {
+                    continue;
+                }
+                try {
+                    com.degel.common.core.R<Boolean> exists = payFeignClient.refundExists(s.getOrderId());
+                    if (exists != null && Boolean.TRUE.equals(exists.getData())) {
+                        continue;
+                    }
+                    sendRefundLog(s);
+                    repaired++;
+                } catch (Exception ex) {
+                    log.warn("[refund-reconcile] 查询/补写失败，下轮重试 orderId={}: {}",
+                            s.getOrderId(), ex.getMessage());
+                }
+            }
+            if (repaired > 0) {
+                log.info("[refund-reconcile] 本轮补写退款流水 {} 单", repaired);
+            }
+        } catch (Exception ex) {
+            log.error("[refund-reconcile] 对账任务异常", ex);
+        }
+    }
+
     // ==================== C 端内部接口实现 ====================
 
     @Override

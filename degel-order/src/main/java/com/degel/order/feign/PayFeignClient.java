@@ -4,8 +4,10 @@ import com.degel.common.core.R;
 import com.degel.order.config.FeignConfig;
 import com.degel.order.vo.inner.PayRefundInnerVo;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * 支付服务 Feign 客户端（售后退款流水落库）。
@@ -19,4 +21,8 @@ public interface PayFeignClient {
     /** C-09: 写退款流水（direction=refund），返回退款流水 ID */
     @PostMapping("/refund")
     R<Long> refund(@RequestBody PayRefundInnerVo vo);
+
+    /** 订单是否已有退款流水（对账补偿判断用） */
+    @GetMapping("/refund/exists")
+    R<Boolean> refundExists(@RequestParam("orderId") Long orderId);
 }
