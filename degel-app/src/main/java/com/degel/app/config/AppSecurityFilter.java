@@ -55,6 +55,9 @@ public class AppSecurityFilter extends OncePerRequestFilter {
     private static final List<String> PUBLIC_PREFIXES = Collections.unmodifiableList(Arrays.asList(
             "/app/auth/",
             "/app/product/",
+            // 服务间内部接口（Feign + X-Inner-Token）：不走 C 端 JWT，由 InnerTokenFilter 鉴权。
+            // 不放行会被本过滤器 401（内部调用无 Bearer token），InnerTokenFilter 永远轮不到
+            "/app/inner/",
             // 商品评价列表（商品详情页匿名可看；写评价仍在鉴权范围）
             "/app/review/list",
             // 首页轮播图（匿名可看，营销位只读展示）

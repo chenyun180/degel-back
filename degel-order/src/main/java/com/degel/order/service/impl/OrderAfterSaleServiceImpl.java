@@ -14,7 +14,10 @@ import com.degel.order.service.IOrderAfterSaleService;
 import com.degel.order.vo.AfterSaleHandleVo;
 import com.degel.order.vo.AfterSaleInfoVo;
 import com.degel.order.vo.inner.AfterSaleCreateInnerVo;
+import com.degel.order.vo.inner.PayRefundInnerVo;
+import com.degel.order.feign.PayFeignClient;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper, OrderAfterSale> implements IOrderAfterSaleService {
@@ -31,6 +35,7 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
     // 注入 Mapper 而非 Service，避免与 OrderInfoServiceImpl 形成构造器循环依赖
     private final OrderInfoMapper orderInfoMapper;
     private final com.degel.order.feign.MarketingFeignClient marketingFeignClient;
+    private final PayFeignClient payFeignClient;
 
     @Override
     public IPage<OrderAfterSale> pageAfterSales(IPage<OrderAfterSale> page, Long shopId, Integer status, Integer type) {
@@ -76,7 +81,7 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         }
         update(updateWrapper);
 
-        // 整单退款完成（agree + type=1 仅退款）→ 退回优惠券（2→未过期?4:5，幂等）。
+        // 整单退款完成（agree + type=1 仅退款）→ 退回优惠券（2→未过期?4:5，幂等）+ 写退款流水。
         // 补贴记账冲销口径：报表按售后状态剔除该单补贴，一期不加冲销列。
         // ⚠️ Feign 在事务内 best-effort：失败仅记日志（券状态可人工/重试修复），不影响售后主流程
         if ("agree".equals(vo.getAction()) && afterSale.getType() == 1) {
@@ -85,10 +90,11 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
                 req.put("orderId", afterSale.getOrderId());
                 marketingFeignClient.returnCoupon(req);
             } catch (Exception ex) {
-                org.slf4j.LoggerFactory.getLogger(OrderAfterSaleServiceImpl.class)
-                        .error("[handle] 整单退回券失败（可人工补偿）afterSaleId={} orderId={}",
-                                afterSale.getId(), afterSale.getOrderId(), ex);
+                log.error("[handle] 整单退回券失败（可人工补偿）afterSaleId={} orderId={}",
+                        afterSale.getId(), afterSale.getOrderId(), ex);
             }
+            // 仅退款的退款即时到账 → 退款流水落库（degel-app mall_payment_log）
+            sendRefundLog(afterSale);
         }
     }
 
@@ -109,6 +115,29 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         update(new LambdaUpdateWrapper<OrderAfterSale>()
                 .eq(OrderAfterSale::getId, afterSaleId)
                 .set(OrderAfterSale::getStatus, 3));
+
+        // 退货退款走到这里（商家确认收到退货）钱才退 → 写退款流水
+        sendRefundLog(afterSale);
+    }
+
+    /**
+     * 退款流水落库（best-effort）：degel-app POST /app/inner/pay/refund。
+     * 状态机保证同一售后单只走到"钱退回"一次（agree 仅 type=1 / confirmReceive 仅 status=2→3），
+     * Feign 超时重试理论上可能重复插流水——接受此风险（与退券同语义），人工对账可辨。
+     */
+    private void sendRefundLog(OrderAfterSale afterSale) {
+        try {
+            OrderInfo order = orderInfoMapper.selectById(afterSale.getOrderId());
+            PayRefundInnerVo vo = new PayRefundInnerVo();
+            vo.setUserId(afterSale.getUserId());
+            vo.setOrderId(afterSale.getOrderId());
+            vo.setOrderNo(order != null ? order.getOrderNo() : String.valueOf(afterSale.getOrderId()));
+            vo.setAmount(afterSale.getRefundAmount());
+            payFeignClient.refund(vo);
+        } catch (Exception ex) {
+            log.error("[refund-log] 退款流水落库失败（可人工补偿）afterSaleId={} orderId={}",
+                    afterSale.getId(), afterSale.getOrderId(), ex);
+        }
     }
 
     // ==================== C 端内部接口实现 ====================

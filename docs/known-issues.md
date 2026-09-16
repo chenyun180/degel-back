@@ -43,7 +43,7 @@
 ## 2026-09-06 优惠券一期新增
 
 - ~~**c_end token 可穿透网关 admin-urls**~~（✅ 2026-09-11 已根治：AuthFilter 对 c_end 令牌限制仅可访问 `/app/**`，其余路径 403；AuthFilterTest 新增 4 个用例覆盖）
-- **售后退款流水死代码**：`/app/inner/pay/refund`（InnerPayController）注释称由 degel-order 审核后调用，但无任何 FeignClient 指向它——售后 agree 后退款流水从不落库，而详情页会去查。优惠券退回（2→4）不受影响（挂在 degel-order handle agree 的 MarketingFeignClient）。
+- ~~**售后退款流水死代码**~~（✅ 2026-09-16 已修复并实测：degel-order 新增 `PayFeignClient`，仅退款在 handle agree、退货退款在 confirmReceive 时调 `/app/inner/pay/refund` 落 `mall_payment_log`（direction=refund，best-effort 同退券语义）。**根因比原记录深一层**：除了无调用方，`AppSecurityFilter` 也把 `/app/inner/**` 按 C 端流量 401（无 Bearer token），InnerTokenFilter 轮不到——已把 `/app/inner/` 加入其放行清单，鉴权由 InnerTokenFilter 承担（无/错 token 403 已实测））
 - **degel-order/product 的 /inner/** 无 token 校验**（仅靠网关不路由隐式保护）；marketing 的 /inner/ 已带 InnerTokenFilter 校验，标准不统一。
 
 ## 2026-09-06 二期补充
