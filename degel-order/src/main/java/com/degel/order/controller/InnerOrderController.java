@@ -100,8 +100,18 @@ public class InnerOrderController {
      * 返回实际收货成功的订单 id
      */
     @PutMapping("/auto-receive")
-    public R<List<Long>> autoConfirmReceipts(@RequestParam(value = "shipDays", defaultValue = "7") int shipDays) {
+    public R<List<OrderInfoVo>> autoConfirmReceipts(@RequestParam(value = "shipDays", defaultValue = "7") int shipDays) {
         return R.ok(orderInfoService.autoConfirmReceipts(shipDays));
+    }
+
+    /**
+     * 回写获得积分数（app 确认收货发分后调用）
+     */
+    @PutMapping("/points-earned")
+    public R<Void> updatePointsEarned(@RequestParam("orderNo") String orderNo,
+                                      @RequestParam("points") int points) {
+        orderInfoService.updatePointsEarned(orderNo, points);
+        return R.ok();
     }
 
     /**

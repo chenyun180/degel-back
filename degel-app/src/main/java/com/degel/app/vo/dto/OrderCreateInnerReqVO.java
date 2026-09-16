@@ -25,6 +25,10 @@ public class OrderCreateInnerReqVO {
     private java.math.BigDecimal platformSubsidy;
     /** 店铺补贴（店铺承担部分，订单记账） */
     private java.math.BigDecimal shopSubsidy;
+    /** 积分抵扣：本单使用的积分数（下单时已在 marketing 冻结） */
+    private Integer pointsUsed;
+    /** 积分抵扣：抵扣金额（已并入 discountAmount 口径） */
+    private java.math.BigDecimal pointsDeduct;
     /** 收货人姓名 */
     private String receiverName;
     /** 收货人手机 */

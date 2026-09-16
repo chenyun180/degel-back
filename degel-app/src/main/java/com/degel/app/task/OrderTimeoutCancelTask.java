@@ -32,6 +32,7 @@ public class OrderTimeoutCancelTask {
     private final OrderFeignClient orderFeignClient;
     private final StockFeignClient stockFeignClient;
     private final com.degel.app.feign.MarketingFeignClient marketingFeignClient;
+    private final com.degel.app.feign.PointsFeignClient pointsFeignClient;
 
     @Scheduled(cron = "0 * * * * ?")
     public void cancelTimeoutOrders() {
@@ -67,6 +68,12 @@ public class OrderTimeoutCancelTask {
                 } catch (Exception ex) {
                     log.error("[OrderTimeoutCancelTask] 券释放失败 orderId={}", order.getId(), ex);
                 }
+            }
+            // 回补该单冻结的积分（幂等；没冻结过则 no-op）
+            try {
+                pointsFeignClient.unfreeze(order.getUserId(), order.getOrderNo());
+            } catch (Exception ex) {
+                log.error("[OrderTimeoutCancelTask] 积分回补失败 orderId={}", order.getId(), ex);
             }
         }
     }

@@ -102,6 +102,7 @@ public class SeckillServiceImpl implements SeckillService {
     private final StockFeignClient stockFeignClient;
     private final OrderFeignClient orderFeignClient;
     private final MallAddressMapper mallAddressMapper;
+    private final com.degel.app.feign.PointsFeignClient pointsFeignClient;
     /** Lua/stock/hold/配置全字符串操作；静态场次缓存走 redisTemplate */
     private final StringRedisTemplate stringRedisTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -395,6 +396,9 @@ public class SeckillServiceImpl implements SeckillService {
         }
 
         boolean stockDeducted = false;
+        // 积分抵扣中间态（try 内赋值，catch 回补用）
+        String seckillOrderNo = null;
+        int seckillPointsUsed = 0;
         try {
             // Step 4: 收货地址校验（同 OrderServiceImpl Step5，含归属校验）。
             // 放在扣库存之前：地址失败时 DB 库存未动，补偿只需 rollback Lua，无需 restoreStock
@@ -407,7 +411,10 @@ public class SeckillServiceImpl implements SeckillService {
                 throw BusinessException.of(40013, "收货地址不存在");
             }
 
-            // Step 5: 扣 DB 库存（原子 SQL；失败=库存不足 → catch 统一 rollback）
+            // Step 4.5: 积分抵扣中间态（seckillPointsUsed 已在 try 外声明；金额局部即可）
+        BigDecimal seckillPointsDeduct = BigDecimal.ZERO;
+
+        // Step 5: 扣 DB 库存（原子 SQL；失败=库存不足 → catch 统一 rollback）
             R<Boolean> deductResp = stockFeignClient.deductStock(new StockDeductVO(skuId, 1));
             if (deductResp == null || deductResp.getCode() != 200 || !Boolean.TRUE.equals(deductResp.getData())) {
                 throw BusinessException.of(40022, "已抢光");
@@ -426,6 +433,38 @@ public class SeckillServiceImpl implements SeckillService {
             BigDecimal seckillPrice = detail.getSeckillPrice();
             LocalDateTime autoCancelTime = LocalDateTime.now().plusMinutes(30);
             String orderNo = generateOrderNo(userId);
+            seckillOrderNo = orderNo;
+
+            // Step 7.5: 积分抵扣（单店：preview → 冻结 → 扣减应付；失败抛异常走补偿）
+            if (Boolean.TRUE.equals(reqVO.getUsePoints())) {
+                try {
+                    R<com.degel.app.vo.dto.PointsPreviewDTO> pv = pointsFeignClient.preview(userId, seckillPrice);
+                    if (pv != null && pv.getCode() == 200 && pv.getData() != null
+                            && pv.getData().getMaxRedeemPoints() != null && pv.getData().getMaxRedeemPoints() > 0) {
+                        int pts = pv.getData().getMaxRedeemPoints();
+                        java.util.Map<String, Object> item = new java.util.HashMap<>(4);
+                        item.put("orderId", null);
+                        item.put("orderNo", orderNo);
+                        item.put("points", pts);
+                        java.util.Map<String, Object> freezeReq = new java.util.HashMap<>(4);
+                        freezeReq.put("userId", userId);
+                        freezeReq.put("items", java.util.Collections.singletonList(item));
+                        R<Void> fr = pointsFeignClient.freeze(freezeReq);
+                        if (fr == null || fr.getCode() != 200) {
+                            throw BusinessException.of(40030,
+                                    fr != null && fr.getMsg() != null ? fr.getMsg() : "积分不可用");
+                        }
+                        seckillPointsUsed = pts;
+                        seckillPointsDeduct = BigDecimal.valueOf(pts, 2);
+                    }
+                } catch (BusinessException be) {
+                    throw be;
+                } catch (Exception e) {
+                    log.error("[SeckillServiceImpl] 积分冻结异常 userId={}", userId, e);
+                    throw BusinessException.of(50002, "积分服务异常，请稍后重试");
+                }
+            }
+            final BigDecimal finalPayAmount = seckillPrice.subtract(seckillPointsDeduct);
 
             OrderCreateInnerReqVO.OrderItemInnerVO item = new OrderCreateInnerReqVO.OrderItemInnerVO();
             item.setSpuId(sku.getSpuId());
@@ -445,8 +484,10 @@ public class SeckillServiceImpl implements SeckillService {
             innerReq.setOrderType(1);
             innerReq.setTotalAmount(seckillPrice);
             innerReq.setFreightAmount(BigDecimal.ZERO);
-            innerReq.setDiscountAmount(BigDecimal.ZERO);
-            innerReq.setPayAmount(seckillPrice);
+            innerReq.setDiscountAmount(seckillPointsDeduct);
+            innerReq.setPayAmount(finalPayAmount);
+            innerReq.setPointsUsed(seckillPointsUsed);
+            innerReq.setPointsDeduct(seckillPointsDeduct);
             innerReq.setReceiverName(address.getName());
             innerReq.setReceiverPhone(address.getPhone());
             innerReq.setReceiverAddress(address.getProvince() + address.getCity()
@@ -462,24 +503,38 @@ public class SeckillServiceImpl implements SeckillService {
             sub.setOrderId(orderId);
             sub.setOrderNo(orderNo);
             sub.setShopId(innerReq.getShopId());
-            sub.setPayAmount(seckillPrice);
+            sub.setPayAmount(finalPayAmount);
             sub.setAutoCancelTime(autoCancelTime);
 
             OrderCreateVO result = new OrderCreateVO();
             result.setOrderId(sub.getOrderId());
             result.setOrderNo(orderNo);
-            result.setPayAmount(seckillPrice);
+            result.setPayAmount(finalPayAmount);
             result.setAutoCancelTime(autoCancelTime);
             result.setOrders(Collections.singletonList(sub));
-            result.setTotalPayAmount(seckillPrice);
+            result.setTotalPayAmount(finalPayAmount);
             return result;
         } catch (BusinessException e) {
             compensateCreateOrder(stockDeducted, skuId, sessionId, userId);
+            rollbackSeckillPoints(userId, seckillOrderNo, seckillPointsUsed);
             throw e;
         } catch (Exception e) {
             log.error("[SeckillServiceImpl] 秒杀下单异常 token={}", token, e);
             compensateCreateOrder(stockDeducted, skuId, sessionId, userId);
+            rollbackSeckillPoints(userId, seckillOrderNo, seckillPointsUsed);
             throw BusinessException.of(50001, "创建订单失败，请稍后重试");
+        }
+    }
+
+    /** 下单失败回补冻结积分（幂等；成功建单路径不调用——支付/取消链路自会处理） */
+    private void rollbackSeckillPoints(Long userId, String orderNo, int pointsUsed) {
+        if (pointsUsed <= 0) {
+            return;
+        }
+        try {
+            pointsFeignClient.unfreeze(userId, orderNo);
+        } catch (Exception ex) {
+            log.error("[SeckillServiceImpl] 积分回补失败（可人工补偿）orderNo={}", orderNo, ex);
         }
     }
 

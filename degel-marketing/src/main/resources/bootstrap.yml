@@ -41,3 +41,13 @@ degel:
   inner:
     # 与 degel-app FeignConfig 发送的 X-Inner-Token 一致（inner 接口鉴权）
     token: ${INNER_TOKEN:degel-inner-service-token-2024}
+  marketing:
+    points:
+      # 积分规则（见 doc/积分系统设计.md）；默认值也可不配，此处显式留环境变量覆盖口
+      enabled: ${POINTS_ENABLED:true}
+      earn-rate: ${POINTS_EARN_RATE:1}
+      redeem-rate: ${POINTS_REDEEM_RATE:100}
+      redeem-max-percent: ${POINTS_REDEEM_MAX_PERCENT:20}
+      checkin-base: ${POINTS_CHECKIN_BASE:5}
+      checkin-inc: ${POINTS_CHECKIN_INC:1}
+      checkin-cap: ${POINTS_CHECKIN_CAP:10}

@@ -35,6 +35,9 @@ public class OrderCreateReqVO {
     /** 每子单独立选券（拆单正式口径：店铺券绑对应店，平台券绑任一子单；与 couponId 二选一，同时传以本字段为准） */
     private List<CouponBinding> couponBindings;
 
+    /** 使用积分抵现（默认 false；抵扣额由服务端按余额与上限计算） */
+    private Boolean usePoints;
+
     /** 备注 */
     private String remark;
 

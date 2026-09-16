@@ -73,8 +73,12 @@ public interface OrderFeignClient {
     /**
      * 批量自动确认收货（定时任务专用）：status=2 且发货超 shipDays 天 → 已完成，返回成功订单 id
      */
+    /** 回写订单获得积分数（确认收货发分后；幂等） */
+    @PutMapping("/points-earned")
+    R<Void> updatePointsEarned(@RequestParam("orderNo") String orderNo, @RequestParam("points") int points);
+
     @PutMapping("/auto-receive")
-    R<List<Long>> autoConfirmReceipts(@RequestParam("shipDays") Integer shipDays);
+    R<java.util.List<com.degel.app.vo.OrderInfoVO>> autoConfirmReceipts(@RequestParam("shipDays") Integer shipDays);
 
     /**
      * 创建售后单（内部）

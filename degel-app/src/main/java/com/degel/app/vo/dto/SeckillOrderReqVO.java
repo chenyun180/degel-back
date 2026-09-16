@@ -16,4 +16,7 @@ public class SeckillOrderReqVO {
 
     @NotNull(message = "收货地址不能为空")
     private Long addressId;
+
+    /** 使用积分抵现（默认 false；单店单商品，抵扣额= min(余额,20%上限)） */
+    private Boolean usePoints;
 }

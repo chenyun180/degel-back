@@ -38,6 +38,7 @@ public class PayServiceImpl implements PayService {
     private final OrderFeignClient orderFeignClient;
     private final com.degel.app.feign.MarketingFeignClient marketingFeignClient;
     private final RedissonClient redissonClient;
+    private final com.degel.app.feign.PointsFeignClient pointsFeignClient;
 
     // =========================================================
     // C-07: POST /app/pay/{orderId} — 发起模拟支付
@@ -106,6 +107,13 @@ public class PayServiceImpl implements PayService {
                 if (updateResp == null || updateResp.getCode() != 200) {
                     // 支付流水已写，记录日志，由补偿任务处理
                     log.error("[PayServiceImpl] 支付流水写入成功但更新订单状态失败 orderId={} payLogId={}", orderId, payLog.getId());
+                }
+
+                // 3.4 积分抵扣落定（freeze → redeem；幂等，失败不阻断支付主流程）
+                try {
+                    pointsFeignClient.redeemSettle(userId, orderInfo.getOrderNo());
+                } catch (Exception ex) {
+                    log.error("[PayServiceImpl] 积分落定失败（幂等，可重试）orderId={}", orderId, ex);
                 }
 
                 // 3.5 核销优惠券（1→2，回填 orderId）。幂等可重试；失败不阻断支付主流程

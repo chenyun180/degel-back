@@ -29,6 +29,12 @@ public class OrderInfo extends BaseEntity {
     private BigDecimal platformSubsidy;
     /** 店铺补贴（店铺承担部分） */
     private BigDecimal shopSubsidy;
+    /** 积分抵扣：本单使用的积分数（app 侧下单时已冻结） */
+    private Integer pointsUsed;
+    /** 积分抵扣：抵扣金额（已并入 discountAmount 口径） */
+    private BigDecimal pointsDeduct;
+    /** 本单获得积分数（确认收货后由 app 回写） */
+    private Integer pointsEarned;
     private Integer status;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

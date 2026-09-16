@@ -24,6 +24,10 @@ public class OrderCreateInnerVo {
     private Long couponId;
     private BigDecimal platformSubsidy;
     private BigDecimal shopSubsidy;
+    /** 积分抵扣：本单使用的积分数（app 侧已冻结） */
+    private Integer pointsUsed;
+    /** 积分抵扣：抵扣金额（已并入 discountAmount 口径） */
+    private BigDecimal pointsDeduct;
     private String receiverName;
     private String receiverPhone;
     private String receiverAddress;

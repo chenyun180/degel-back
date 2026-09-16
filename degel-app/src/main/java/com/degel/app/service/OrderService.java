@@ -55,4 +55,7 @@ public interface OrderService {
      * @param userId  当前用户ID
      */
     void confirmReceive(Long orderId, Long userId);
+
+    /** 确认收货后发放积分（手动确认/自动收货任务共用；幂等 best-effort） */
+    void grantPointsForOrder(com.degel.app.vo.OrderInfoVO order);
 }

@@ -54,9 +54,12 @@ public interface IOrderInfoService extends IService<OrderInfo> {
      */
     List<OrderInfoVo> cancelTimeoutOrders();
 
+    /** 回写订单获得积分数（确认收货发分后由 app 调用；幂等 UPDATE） */
+    void updatePointsEarned(String orderNo, int points);
+
     /**
      * 批量自动确认收货（status=2 且 shipTime <= now - shipDays）。
      * UPDATE 带 status=2 条件，与并发确认收货/售后单互斥；返回实际收货成功的订单 id 列表
      */
-    List<Long> autoConfirmReceipts(int shipDays);
+    List<OrderInfoVo> autoConfirmReceipts(int shipDays);
 }

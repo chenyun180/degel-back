@@ -152,6 +152,8 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         order.setCouponId(vo.getCouponId());
         order.setPlatformSubsidy(vo.getPlatformSubsidy() != null ? vo.getPlatformSubsidy() : BigDecimal.ZERO);
         order.setShopSubsidy(vo.getShopSubsidy() != null ? vo.getShopSubsidy() : BigDecimal.ZERO);
+        order.setPointsUsed(vo.getPointsUsed() != null ? vo.getPointsUsed() : 0);
+        order.setPointsDeduct(vo.getPointsDeduct() != null ? vo.getPointsDeduct() : BigDecimal.ZERO);
         order.setStatus(0);
         order.setReceiverName(vo.getReceiverName());
         order.setReceiverPhone(vo.getReceiverPhone());
@@ -257,18 +259,18 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public List<Long> autoConfirmReceipts(int shipDays) {
-        // 确认收货是纯状态变更（2→3 + receiveTime），无库存/券等副作用，逐单原子更新即可
+    public List<OrderInfoVo> autoConfirmReceipts(int shipDays) {
+        // 确认收货是纯状态变更（2→3 + receiveTime），无库存/券等副作用，逐单原子更新即可。
+        // 返回 VO（不带明细）：app 侧收货后要发积分（需 userId/orderNo/payAmount）
         LocalDateTime deadline = LocalDateTime.now().minusDays(shipDays);
         List<OrderInfo> candidates = list(new LambdaQueryWrapper<OrderInfo>()
                 .eq(OrderInfo::getStatus, 2)
                 .isNotNull(OrderInfo::getShipTime)
-                .le(OrderInfo::getShipTime, deadline)
-                .select(OrderInfo::getId));
+                .le(OrderInfo::getShipTime, deadline));
         if (candidates.isEmpty()) {
             return Collections.emptyList();
         }
-        List<Long> confirmed = new ArrayList<>();
+        List<OrderInfoVo> confirmed = new ArrayList<>();
         for (OrderInfo order : candidates) {
             // WHERE status=2 与并发确认收货/售后流转互斥：别处先改 3 则此处 0 行
             boolean ok = update(new LambdaUpdateWrapper<OrderInfo>()
@@ -277,10 +279,25 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
                     .set(OrderInfo::getStatus, 3)
                     .set(OrderInfo::getReceiveTime, LocalDateTime.now()));
             if (ok) {
-                confirmed.add(order.getId());
+                OrderInfoVo vo = new OrderInfoVo();
+                vo.setId(order.getId());
+                vo.setOrderNo(order.getOrderNo());
+                vo.setUserId(order.getUserId());
+                vo.setShopId(order.getShopId());
+                vo.setOrderType(order.getOrderType());
+                vo.setPayAmount(order.getPayAmount());
+                vo.setStatus(3);
+                confirmed.add(vo);
             }
         }
         return confirmed;
+    }
+
+    @Override
+    public void updatePointsEarned(String orderNo, int points) {
+        update(new LambdaUpdateWrapper<OrderInfo>()
+                .eq(OrderInfo::getOrderNo, orderNo)
+                .set(OrderInfo::getPointsEarned, points));
     }
 
     @Override
@@ -333,6 +350,9 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         vo.setCouponId(order.getCouponId());
         vo.setPlatformSubsidy(order.getPlatformSubsidy());
         vo.setShopSubsidy(order.getShopSubsidy());
+        vo.setPointsUsed(order.getPointsUsed());
+        vo.setPointsDeduct(order.getPointsDeduct());
+        vo.setPointsEarned(order.getPointsEarned());
         vo.setStatus(order.getStatus());
         vo.setPayTime(order.getPayTime());
         vo.setShipTime(order.getShipTime());

@@ -36,6 +36,7 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
     private final OrderInfoMapper orderInfoMapper;
     private final com.degel.order.feign.MarketingFeignClient marketingFeignClient;
     private final PayFeignClient payFeignClient;
+    private final com.degel.order.feign.PointsFeignClient pointsFeignClient;
 
     @Override
     public IPage<OrderAfterSale> pageAfterSales(IPage<OrderAfterSale> page, Long shopId, Integer status, Integer type) {
@@ -95,6 +96,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             }
             // 仅退款的退款即时到账 → 退款流水落库（degel-app mall_payment_log）
             sendRefundLog(afterSale);
+            // 积分结算：退回抵扣 + 回收已发（均幂等 best-effort，与退款流水同语义）
+            settlePointsOnRefund(afterSale);
         }
     }
 
@@ -118,6 +121,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
 
         // 退货退款走到这里（商家确认收到退货）钱才退 → 写退款流水
         sendRefundLog(afterSale);
+        // 积分结算：退回抵扣 + 回收已发
+        settlePointsOnRefund(afterSale);
     }
 
     /**
@@ -138,6 +143,36 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             log.error("[refund-log] 退款流水落库失败（可人工补偿）afterSaleId={} orderId={}",
                     afterSale.getId(), afterSale.getOrderId(), ex);
         }
+    }
+
+    /**
+     * 退款时的积分结算（幂等 best-effort）：
+     * - returnRedeem：该单冻结/抵扣的积分无条件全额退回（freeze 流水取数）；
+     * - reclaimEarn：该单已发放的积分回收（earn 流水取数；确认收货前退款则未发放 no-op，
+     *   余额不足扣至 0 为止）。失败仅记日志，与退券/退款流水同语义可人工补偿。
+     */
+    private void settlePointsOnRefund(OrderAfterSale afterSale) {
+        try {
+            pointsFeignClient.returnRedeem(afterSale.getUserId(), getOrderNo(afterSale.getOrderId()));
+        } catch (Exception ex) {
+            log.error("[points-refund] 退回抵扣积分失败（可人工补偿）afterSaleId={} orderId={}",
+                    afterSale.getId(), afterSale.getOrderId(), ex);
+        }
+        try {
+            java.util.Map<String, Object> req = new java.util.HashMap<>(4);
+            req.put("userId", afterSale.getUserId());
+            req.put("orderId", afterSale.getOrderId());
+            req.put("orderNo", getOrderNo(afterSale.getOrderId()));
+            pointsFeignClient.reclaimEarn(req);
+        } catch (Exception ex) {
+            log.error("[points-refund] 回收已发积分失败（可人工补偿）afterSaleId={} orderId={}",
+                    afterSale.getId(), afterSale.getOrderId(), ex);
+        }
+    }
+
+    private String getOrderNo(Long orderId) {
+        OrderInfo order = orderInfoMapper.selectById(orderId);
+        return order != null ? order.getOrderNo() : String.valueOf(orderId);
     }
 
     /**

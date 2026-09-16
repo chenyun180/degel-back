@@ -28,6 +28,12 @@ public class OrderInfoVo {
     private Long couponId;
     private BigDecimal platformSubsidy;
     private BigDecimal shopSubsidy;
+    /** 积分抵扣：使用的积分数 */
+    private Integer pointsUsed;
+    /** 积分抵扣：抵扣金额（已并入 discountAmount） */
+    private BigDecimal pointsDeduct;
+    /** 本单获得积分数（确认收货后回写） */
+    private Integer pointsEarned;
     private Integer status;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime payTime;
