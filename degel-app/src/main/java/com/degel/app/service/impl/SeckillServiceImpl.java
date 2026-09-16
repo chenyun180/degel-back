@@ -335,7 +335,7 @@ public class SeckillServiceImpl implements SeckillService {
 
     /**
      * Lua 预扣调用。KEYS 顺序与 seckill_reserve.lua 一一对应：
-     * cfg/stock/bought/hold:{token}/hold:zset；ARGV: nowMs/userId/token(占位)/holdTtlSec/holdValue/zsetMember
+     * cfg/stock/bought/hold:{token}/hold:zset；ARGV: nowMs/userId/holdTtlSec/holdValue/zsetMember
      */
     private Long executeReserve(Long sessionId, Long skuId, Long userId, String token) {
         List<String> keys = Arrays.asList(
@@ -347,7 +347,6 @@ public class SeckillServiceImpl implements SeckillService {
         return stringRedisTemplate.execute(seckillReserveScript, keys,
                 String.valueOf(System.currentTimeMillis()),
                 String.valueOf(userId),
-                token,
                 String.valueOf(HOLD_TTL_SECONDS),
                 holdValue(userId, sessionId, skuId),
                 zsetMember(token, userId, sessionId, skuId));

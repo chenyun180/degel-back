@@ -11,6 +11,7 @@ import com.degel.marketing.entity.SeckillSession;
 import com.degel.marketing.mapper.SeckillProductMapper;
 import com.degel.marketing.mapper.SeckillSessionMapper;
 import com.degel.marketing.service.SeckillProductService;
+import com.degel.marketing.service.SeckillRedisSync;
 import com.degel.marketing.vo.SeckillProductCreateVo;
 import com.degel.marketing.vo.SeckillProductVo;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class SeckillProductServiceImpl extends ServiceImpl<SeckillProductMapper,
 
     /** 用 Mapper 而非 SeckillSessionService，避免 service 循环依赖 */
     private final SeckillSessionMapper seckillSessionMapper;
+    private final SeckillRedisSync seckillRedisSync;
 
     @Override
     public IPage<SeckillProduct> pageBySession(Long sessionId, Long page, Long pageSize) {
@@ -62,6 +64,7 @@ public class SeckillProductServiceImpl extends ServiceImpl<SeckillProductMapper,
             throw new BusinessException("秒杀商品不存在");
         }
         // 显式 set 全部可编辑字段（对齐 banner 编辑分支）
+        SeckillProduct old = getById(vo.getId());
         update(new LambdaUpdateWrapper<SeckillProduct>()
                 .eq(SeckillProduct::getId, vo.getId())
                 .set(SeckillProduct::getSessionId, vo.getSessionId())
@@ -71,6 +74,18 @@ public class SeckillProductServiceImpl extends ServiceImpl<SeckillProductMapper,
                 .set(SeckillProduct::getSeckillStock, vo.getSeckillStock())
                 .set(SeckillProduct::getPerLimit, vo.getPerLimit())
                 .set(SeckillProduct::getSort, vo.getSort()));
+        // 已预热的场次做 Redis 增量对齐（best-effort）：
+        // 库存按 delta INCRBY（不重置，防超卖）、限购覆盖 cfg.limit。
+        // 换绑场次/SKU 不做增量（旧 key 留待 TTL 过期）——语义等于"删旧建新"，建议直接删除重建
+        if (old.getSessionId().equals(vo.getSessionId()) && old.getSkuId().equals(vo.getSkuId())) {
+            int delta = (vo.getSeckillStock() == null ? 0 : vo.getSeckillStock())
+                    - (old.getSeckillStock() == null ? 0 : old.getSeckillStock());
+            seckillRedisSync.syncStockDelta(vo.getSessionId(), vo.getSkuId(), delta);
+            seckillRedisSync.syncLimit(vo.getSessionId(), vo.getSkuId(), vo.getPerLimit());
+        } else {
+            log.warn("seckill product 换绑场次/SKU，不做 Redis 增量同步 id={} {}:{} -> {}:{}（建议删除重建）",
+                    vo.getId(), old.getSessionId(), old.getSkuId(), vo.getSessionId(), vo.getSkuId());
+        }
         log.info("seckill product updated id={}", vo.getId());
     }
 

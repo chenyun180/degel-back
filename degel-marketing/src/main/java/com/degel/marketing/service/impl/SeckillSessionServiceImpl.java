@@ -11,7 +11,9 @@ import com.degel.marketing.entity.SeckillProduct;
 import com.degel.marketing.entity.SeckillSession;
 import com.degel.marketing.mapper.SeckillSessionMapper;
 import com.degel.marketing.service.SeckillProductService;
+import com.degel.marketing.service.SeckillRedisSync;
 import com.degel.marketing.service.SeckillSessionService;
+import com.degel.marketing.vo.SeckillProductVo;
 import com.degel.marketing.vo.SeckillSessionCreateVo;
 import com.degel.marketing.vo.SeckillSessionVo;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ public class SeckillSessionServiceImpl extends ServiceImpl<SeckillSessionMapper,
         implements SeckillSessionService {
 
     private final SeckillProductService seckillProductService;
+    private final SeckillRedisSync seckillRedisSync;
 
     @Override
     public IPage<SeckillSession> page(Long page, Long pageSize, String name, Integer status) {
@@ -71,6 +74,11 @@ public class SeckillSessionServiceImpl extends ServiceImpl<SeckillSessionMapper,
                 .set(SeckillSession::getStartTime, vo.getStartTime())
                 .set(SeckillSession::getEndTime, vo.getEndTime())
                 .set(SeckillSession::getSort, vo.getSort()));
+        // 已预热的场次同步 Redis cfg 时间窗（best-effort；未预热无需处理，预热时按新值写）
+        seckillRedisSync.syncSessionTime(vo.getId(),
+                seckillProductService.listBySession(vo.getId()).stream()
+                        .map(SeckillProductVo::getSkuId).collect(Collectors.toList()),
+                vo.getStartTime(), vo.getEndTime());
         log.info("seckill session updated id={}", vo.getId());
     }
 
@@ -98,6 +106,23 @@ public class SeckillSessionServiceImpl extends ServiceImpl<SeckillSessionMapper,
             throw new BusinessException("秒杀场次不存在");
         }
         log.info("seckill session toggle-status id={}", id);
+    }
+
+    @Override
+    public void rewarm(Long id) {
+        SeckillSession session = getById(id);
+        if (session == null) {
+            throw new BusinessException("秒杀场次不存在");
+        }
+        if (!Integer.valueOf(1).equals(session.getStatus())) {
+            throw new BusinessException("仅启用状态的场次可重新预热");
+        }
+        if (!session.getStartTime().isAfter(LocalDateTime.now())) {
+            throw new BusinessException("场次已开始，重置预热会把已售量重新放出（超卖）；请改用编辑库存增量调整");
+        }
+        List<Long> skuIds = seckillProductService.listBySession(id).stream()
+                .map(SeckillProductVo::getSkuId).collect(Collectors.toList());
+        seckillRedisSync.clearWarmup(id, skuIds);
     }
 
     @Override

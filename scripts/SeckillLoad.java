@@ -99,7 +99,7 @@ public class SeckillLoad {
         System.out.println("[prep] " + N + " users ready (phones " + PHONE_BASE + "~" + (Long.parseLong(PHONE_BASE) + N - 1) + ")");
     }
 
-    // ---------- 2. 登录 ----------
+    // ---------- 2. 登录（服务端有 IP 限流，40027 时退避重试） ----------
     static void login() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(20);
         CountDownLatch done = new CountDownLatch(N);
@@ -108,10 +108,21 @@ public class SeckillLoad {
             final String phone = String.valueOf(Long.parseLong(PHONE_BASE) + i);
             pool.execute(() -> {
                 try {
-                    String body = post(GW + "/app/auth/login",
-                            "{\"phone\":\"" + phone + "\",\"password\":\"admin123\"}", null);
-                    String token = extract(body, "\"token\":\"");
-                    if (token != null) PHONE_TOKEN.put(phone, token);
+                    for (int retry = 0; retry < 20; retry++) {
+                        String body = post(GW + "/app/auth/login",
+                                "{\"phone\":\"" + phone + "\",\"password\":\"admin123\"}", null);
+                        int code = codeOf(body);
+                        if (code == 200) {
+                            String token = extract(body, "\"token\":\"");
+                            if (token != null) PHONE_TOKEN.put(phone, token);
+                            break;
+                        }
+                        if (code != 40027) { // 40027=登录限流，退避后重试；其他错误直接失败
+                            System.out.println("[login fail] " + phone + " code=" + code);
+                            break;
+                        }
+                        Thread.sleep(5000);
+                    }
                 } catch (Exception e) {
                     System.out.println("[login fail] " + phone + " " + e);
                 } finally {

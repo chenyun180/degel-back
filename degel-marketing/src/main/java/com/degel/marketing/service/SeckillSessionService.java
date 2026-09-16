@@ -30,4 +30,10 @@ public interface SeckillSessionService extends IService<SeckillSession> {
      * 按 sort、startTime 升序；每场附带商品列表（sort 升序）。
      */
     List<SeckillSessionVo> listCurrent();
+
+    /**
+     * 重新预热：清除该场次的 Redis 预热数据（warmed/cfg/stock/bought），
+     * 下个预热周期按 DB 最新配置重建。仅未开场次允许（已开场次重置会把已售量放出，超卖）。
+     */
+    void rewarm(Long id);
 }

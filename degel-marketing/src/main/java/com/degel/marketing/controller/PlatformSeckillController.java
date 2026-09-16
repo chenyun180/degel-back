@@ -83,6 +83,21 @@ public class PlatformSeckillController {
         return R.ok();
     }
 
+    /**
+     * 重新预热：清除该场次 Redis 预热数据，下个预热周期（约 1 分钟，或首次 reserve 懒预热）
+     * 按 DB 最新配置重建。仅启用且未开始的场次允许——已开场次重置会把已售量重新放出（超卖）。
+     */
+    @PutMapping("/session/rewarm/{id}")
+    public R<Void> rewarmSession(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
+        if (shopId == null || shopId > 0) {
+            return R.fail("仅平台可管理秒杀场次");
+        }
+        seckillSessionService.rewarm(id);
+        return R.ok();
+    }
+
     // ------------------------------------------------------------------
     // 场次商品
     // ------------------------------------------------------------------

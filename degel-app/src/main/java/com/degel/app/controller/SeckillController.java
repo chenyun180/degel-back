@@ -1,7 +1,9 @@
 package com.degel.app.controller;
 
 import com.degel.app.context.UserContext;
+import com.degel.app.exception.BusinessException;
 import com.degel.app.service.SeckillService;
+import com.degel.app.util.RedisRateLimiter;
 import com.degel.app.vo.OrderCreateVO;
 import com.degel.app.vo.SeckillProductVO;
 import com.degel.app.vo.SeckillReserveVO;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 /**
@@ -24,20 +27,33 @@ import java.util.List;
  * S-05: POST /app/seckill/cancel            主动放弃资格
  *
  * <p>错误码：40020 活动不存在或已停用 / 40021 未开始或已结束 / 40022 已抢光 /
- * 40023 超出限购 / 40024 资格已过期 / 40025 资格校验失败。
+ * 40023 超出限购 / 40024 资格已过期 / 40025 资格校验失败 /
+ * 40026 抢购尝试过于频繁 / 40028 请求过于频繁（公开端点 IP 限流）。
  */
 @RestController
 @RequestMapping("/app/seckill")
 @RequiredArgsConstructor
 public class SeckillController {
 
+    /** reserve 防刷：单用户 10s 内最多 5 次尝试（含失败——挡的是无效请求对 Redis/网关的消耗） */
+    private static final int RESERVE_LIMIT = 5;
+    private static final int RESERVE_WINDOW_SECONDS = 10;
+    /** 场次列表（匿名公开）：单 IP 60 次/分钟，接口有 30s 静态缓存，正常用户够用 */
+    private static final int SESSIONS_IP_LIMIT = 60;
+    private static final int SESSIONS_WINDOW_SECONDS = 60;
+
     private final SeckillService seckillService;
+    private final RedisRateLimiter rateLimiter;
 
     /**
      * S-01: 场次列表（含商品与实时余量；匿名可看）
      */
     @GetMapping("/sessions")
-    public R<List<SeckillSessionVO>> listSessions() {
+    public R<List<SeckillSessionVO>> listSessions(HttpServletRequest request) {
+        String ip = RedisRateLimiter.clientIp(request);
+        if (!rateLimiter.allow("rl:pub:seckill-sessions:" + ip, SESSIONS_IP_LIMIT, SESSIONS_WINDOW_SECONDS)) {
+            throw BusinessException.of(40028, "请求过于频繁，请稍后再试");
+        }
         return R.ok(seckillService.listSessions());
     }
 
@@ -56,6 +72,9 @@ public class SeckillController {
     @PostMapping("/reserve")
     public R<SeckillReserveVO> reserve(@RequestBody @Validated SeckillReserveReqVO reqVO) {
         Long userId = UserContext.getUserId();
+        if (!rateLimiter.allow("seckill:rl:reserve:" + userId, RESERVE_LIMIT, RESERVE_WINDOW_SECONDS)) {
+            throw BusinessException.of(40026, "抢购尝试过于频繁，请稍后再试");
+        }
         return R.ok(seckillService.reserve(reqVO, userId));
     }
 

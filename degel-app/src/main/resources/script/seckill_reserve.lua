@@ -6,8 +6,7 @@
 -- KEYS[5] seckill:hold:zset                  ZSET: member=token:userId:sessionId:skuId score=过期时刻 ms
 --        （回滚上下文冗余进 member：hold key 被 TTL 自动删除后值即丢失，
 --          兜底清理任务 SeckillHoldCleanupTask 仍能从 member 还原 token/userId/sessionId/skuId 完成回滚）
--- ARGV[1] nowMs  ARGV[2] userId  ARGV[3] token（占位保留，脚本内不再单独使用）
--- ARGV[4] holdTtlSec  ARGV[5] holdValue(userId:sessionId:skuId)  ARGV[6] zsetMember(token:userId:sessionId:skuId)
+-- ARGV[1] nowMs  ARGV[2] userId  ARGV[3] holdTtlSec  ARGV[4] holdValue(userId:sessionId:skuId)  ARGV[5] zsetMember(token:userId:sessionId:skuId)
 -- 返回 0=成功  -1=未预热(cfg 不存在)  1=未开始或已结束  2=已抢光  3=超出限购
 local cfg = redis.call('HGETALL', KEYS[1])
 if #cfg == 0 then return -1 end
@@ -25,6 +24,6 @@ local bought = tonumber(redis.call('HGET', KEYS[3], ARGV[2]) or '0')
 if bought + 1 > limit then return 3 end
 redis.call('DECR', KEYS[2])
 redis.call('HINCRBY', KEYS[3], ARGV[2], 1)
-redis.call('SET', KEYS[4], ARGV[5], 'EX', tonumber(ARGV[4]))
-redis.call('ZADD', KEYS[5], now + tonumber(ARGV[4]) * 1000, ARGV[6])
+redis.call('SET', KEYS[4], ARGV[4], 'EX', tonumber(ARGV[3]))
+redis.call('ZADD', KEYS[5], now + tonumber(ARGV[3]) * 1000, ARGV[5])
 return 0
