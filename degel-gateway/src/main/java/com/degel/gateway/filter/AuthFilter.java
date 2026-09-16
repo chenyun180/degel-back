@@ -36,7 +36,7 @@ public class AuthFilter implements GlobalFilter, Ordered {
     private final DegelSecurityProperties properties;
     private final ReactiveStringRedisTemplate redisTemplate;
 
-    private static final String BLACKLIST_PREFIX = "auth:blacklist:";
+    private static final String BLACKLIST_PREFIX = Constants.AUTH_BLACKLIST_PREFIX;
 
     /** C 端令牌黑名单前缀（与 degel-app AppSecurityFilter 一致） */
     private static final String APP_BLACKLIST_PREFIX = "app:blacklist:";
@@ -145,18 +145,37 @@ public class AuthFilter implements GlobalFilter, Ordered {
                     }
                     // 存量 token 无 role_keys 时 roleKeys 为空列表，访问 admin-urls 会被拒绝。
                     // 这是有意设计：强制旧 token 重新登录以获取带角色信息的新 token，不放宽。
-                    if (isAdminOnly(cleanedRequest) && !roleKeys.contains(Constants.ROLE_KEY_ADMIN)) {
-                        return forbidden(finalExchange, "无权限执行此操作");
+                    final boolean adminDenied =
+                            isAdminOnly(cleanedRequest) && !roleKeys.contains(Constants.ROLE_KEY_ADMIN);
+
+                    // 角色校验 + header 注入 + 放行（版本校验通过后执行）
+                    java.util.function.Supplier<Mono<Void>> proceed = () -> {
+                        if (adminDenied) {
+                            return forbidden(finalExchange, "无权限执行此操作");
+                        }
+                        ServerHttpRequest mutatedRequest = finalExchange.getRequest().mutate()
+                                .header("X-User-Id", userId != null ? userId.toString() : "")
+                                .header("X-User-Name", userName != null ? userName.toString() : "")
+                                .header("X-Shop-Id", shopId != null ? shopId.toString() : "0")
+                                .header("X-User-Roles", String.join(",", roleKeys))
+                                .build();
+                        return chain.filter(finalExchange.mutate().request(mutatedRequest).build());
+                    };
+
+                    // 用户级吊销：改密/禁用/删除用户/停店铺时 admin 侧 INCR auth:tokenver:{userId}，
+                    // 旧 token 的 token_version claim < 当前值 → 立即失效（jti 黑名单只能吊销单个 token）
+                    if (userId != null) {
+                        return redisTemplate.opsForValue()
+                                .get(Constants.AUTH_TOKEN_VERSION_PREFIX + userId)
+                                .defaultIfEmpty("0")
+                                .flatMap(currentVersion -> {
+                                    if (parseLongSafe(currentVersion) > tokenVersionClaim(claims)) {
+                                        return unauthorized(finalExchange, "凭证已变更，请重新登录");
+                                    }
+                                    return proceed.get();
+                                });
                     }
-
-                    ServerHttpRequest mutatedRequest = finalExchange.getRequest().mutate()
-                            .header("X-User-Id", userId != null ? userId.toString() : "")
-                            .header("X-User-Name", userName != null ? userName.toString() : "")
-                            .header("X-Shop-Id", shopId != null ? shopId.toString() : "0")
-                            .header("X-User-Roles", String.join(",", roleKeys))
-                            .build();
-
-                    return chain.filter(finalExchange.mutate().request(mutatedRequest).build());
+                    return proceed.get();
                 });
     }
 
@@ -196,11 +215,43 @@ public class AuthFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isWhitelisted(String path) {
-        return properties.getIgnoreUrls().stream().anyMatch(path::startsWith);
+        return properties.getIgnoreUrls().stream().anyMatch(rule -> matchesPathPrefix(rule, path));
     }
 
     private boolean isInternal(String path) {
-        return properties.getInternalUrls().stream().anyMatch(path::startsWith);
+        return properties.getInternalUrls().stream().anyMatch(rule -> matchesPathPrefix(rule, path));
+    }
+
+    /**
+     * 段感知前缀匹配：规则以 / 结尾 → startsWith 前缀；否则精确匹配或 rule+"/" 前缀。
+     * 取代原来的纯 startsWith——那会把 /auth/oauth/token-xxx 之类与规则同前缀的未来路径
+     * 也顺带放行进白名单/内部拦截。
+     */
+    private boolean matchesPathPrefix(String rule, String path) {
+        if (rule.endsWith("/")) {
+            return path.startsWith(rule);
+        }
+        return path.equals(rule) || path.startsWith(rule + "/");
+    }
+
+    /** token 里的 token_version claim（无 claim 的存量 token 视为 0） */
+    private long tokenVersionClaim(Claims claims) {
+        Object v = claims.get("token_version");
+        if (v instanceof Number) {
+            return ((Number) v).longValue();
+        }
+        return parseLongSafe(v != null ? String.valueOf(v) : null);
+    }
+
+    private long parseLongSafe(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     /**

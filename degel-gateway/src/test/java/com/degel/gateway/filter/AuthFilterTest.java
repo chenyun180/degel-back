@@ -44,6 +44,7 @@ class AuthFilterTest {
     private static final String AUDIT_URL = "/product/spu/audit";
 
     private ReactiveStringRedisTemplate redisTemplate;
+    private org.springframework.data.redis.core.ReactiveValueOperations<String, String> valueOps;
     private GatewayFilterChain chain;
     private AuthFilter authFilter;
 
@@ -69,6 +70,10 @@ class AuthFilterTest {
 
         redisTemplate = mock(ReactiveStringRedisTemplate.class);
         when(redisTemplate.hasKey(anyString())).thenReturn(Mono.just(false));
+        valueOps = mock(org.springframework.data.redis.core.ReactiveValueOperations.class);
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        // token 版本查询缺省返回 empty（视作版本 0，不吊销）
+        when(valueOps.get(anyString())).thenReturn(Mono.empty());
 
         chain = mock(GatewayFilterChain.class);
         when(chain.filter(any(ServerWebExchange.class))).thenReturn(Mono.empty());
@@ -335,5 +340,77 @@ class AuthFilterTest {
         verify(chain).filter(captor.capture());
         assertEquals("42", captor.getValue().getRequest().getHeaders().getFirst("X-User-Id"));
         assertEquals("0", captor.getValue().getRequest().getHeaders().getFirst("X-Shop-Id"));
+    }
+
+    /** 场景 8a：与白名单规则同前缀的路径（/auth/oauth/token-xxx）不再被 startsWith 误放行 → 无 token 401 */
+    @Test
+    void pathSharingPrefixWithWhitelistRuleIsNotWhitelisted() {
+        MockServerWebExchange exchange = exchange(HttpMethod.POST, "/auth/oauth/token-xxx", null);
+
+        authFilter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    /** 场景 8b：/app/ 前缀规则不匹配 /appx → 无 token 401（独立 properties，含 /app/ 白名单） */
+    @Test
+    void appPrefixRuleDoesNotMatchSimilarSegment() {
+        DegelSecurityProperties appProps = new DegelSecurityProperties();
+        appProps.setJwtSecret(SECRET);
+        appProps.setAppJwtSecret(APP_SECRET);
+        appProps.setIgnoreUrls(Arrays.asList("/auth/oauth/token", "/app/"));
+        AuthFilter appFilter = new AuthFilter(appProps, redisTemplate);
+
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/appx", null);
+
+        appFilter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    /** 管理端 token 构造（带 token_version claim，用于用户级吊销用例） */
+    private String tokenWithVersion(Long userId, long tokenVersion) {
+        Key key = new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), SignatureAlgorithm.HS256.getJcaName());
+        return Jwts.builder()
+                .setId("jti-ver-" + tokenVersion)
+                .setExpiration(new Date(System.currentTimeMillis() + 3600_000L))
+                .claim("user_id", userId)
+                .claim("user_name", "shopuser")
+                .claim("shop_id", 5L)
+                .claim("role_keys", Collections.singletonList("shop"))
+                .claim("token_version", tokenVersion)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /** 场景 9a：Redis 当前版本(6) > claim(5)（改密/禁用后 INCR）→ 旧 token 401 */
+    @Test
+    void staleTokenVersionIsRejected() {
+        when(valueOps.get(org.mockito.ArgumentMatchers.startsWith("auth:tokenver:")))
+                .thenReturn(Mono.just("6"));
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/product/spu/list",
+                tokenWithVersion(2L, 5L));
+
+        authFilter.filter(exchange, chain).block();
+
+        assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+        verify(chain, never()).filter(any(ServerWebExchange.class));
+    }
+
+    /** 场景 9b：claim(5) >= 当前版本(5) → 放行 */
+    @Test
+    void currentTokenVersionIsAllowed() {
+        when(valueOps.get(org.mockito.ArgumentMatchers.startsWith("auth:tokenver:")))
+                .thenReturn(Mono.just("5"));
+        MockServerWebExchange exchange = exchange(HttpMethod.GET, "/product/spu/list",
+                tokenWithVersion(2L, 5L));
+
+        authFilter.filter(exchange, chain).block();
+
+        verify(chain).filter(any(ServerWebExchange.class));
+        assertTrue(exchange.getResponse().getStatusCode() == null
+                || exchange.getResponse().getStatusCode().is2xxSuccessful());
     }
 }

@@ -32,6 +32,16 @@ public class Constants {
     /** 角色标识 - 超级管理员 */
     public static final String ROLE_KEY_ADMIN = "admin";
 
+    /** 管理端 token 黑名单 key 前缀（degel-auth 写入，网关校验；值为 jti） */
+    public static final String AUTH_BLACKLIST_PREFIX = "auth:blacklist:";
+
+    /**
+     * 管理端用户级 token 版本 key 前缀（auth:tokenver:{userId}）。
+     * 签发时读当前值写入 token_version claim；网关每请求比对 claim >= 当前值。
+     * 改密/禁用/删除用户/停店铺时 INCR 该 key，使该用户全部已签发 token 立即失效。
+     */
+    public static final String AUTH_TOKEN_VERSION_PREFIX = "auth:tokenver:";
+
     /** 用户默认密码 */
     public static final String DEFAULT_PASSWORD = "admin123";
 

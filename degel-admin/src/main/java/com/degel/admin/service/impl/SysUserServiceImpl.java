@@ -219,6 +219,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         if (existing != null) {
             evictUserCache(existing.getUsername());
         }
+
+        // 资料/状态/角色变更 → 该用户全部已签发 token 立即失效（旧 token 里的 role_keys 等已过期）
+        bumpTokenVersion(user.getId());
     }
 
     @Override
@@ -233,6 +236,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         if (existing != null) {
             evictUserCache(existing.getUsername());
         }
+
+        bumpTokenVersion(userId);
     }
 
     @Override
@@ -250,6 +255,9 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         this.updateById(update);
 
         evictUserCache(user.getUsername());
+
+        // 改密后旧 token 全量失效
+        bumpTokenVersion(userId);
         return newPassword;
     }
 
@@ -260,6 +268,35 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
                 .eq(SysUser::getDelFlag, 0));
         for (SysUser user : users) {
             evictUserCache(user.getUsername());
+        }
+    }
+
+    @Override
+    public void bumpTokenVersion(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        try {
+            redisTemplate.opsForValue().increment(Constants.AUTH_TOKEN_VERSION_PREFIX + userId);
+        } catch (Exception e) {
+            // fail-open：Redis 故障不应阻断管理操作，但这意味着旧 token 未被吊销、
+            // 在剩余有效期内（最长 2h）仍可用——记 error 留痕，便于事后补偿处理
+            log.error("Bump token version failed, userId={} 的旧 token 未被吊销: {}", userId, e.getMessage());
+        }
+    }
+
+    @Override
+    public void bumpTokenVersionByShopId(Long shopId) {
+        if (shopId == null || shopId == 0L) {
+            return;
+        }
+        List<Long> userIds = this.list(new LambdaQueryWrapper<SysUser>()
+                        .eq(SysUser::getShopId, shopId)
+                        .eq(SysUser::getDelFlag, 0)
+                        .select(SysUser::getId))
+                .stream().map(SysUser::getId).collect(Collectors.toList());
+        for (Long userId : userIds) {
+            bumpTokenVersion(userId);
         }
     }
 

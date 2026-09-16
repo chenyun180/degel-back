@@ -108,6 +108,10 @@ public class SysShopServiceImpl extends ServiceImpl<SysShopMapper, SysShop> impl
 
         // 用户状态已变，清除这些用户的登录信息缓存，否则缓存 TTL 内仍按旧状态放行
         userService.evictUserCacheByShopId(shopId);
+
+        // 停用店铺 → 该店铺全部账号的已签发 token 立即失效（启用时同样 bump，
+        // 强制重新登录拿新 token，避免停用期间过期的角色/状态信息复活）
+        userService.bumpTokenVersionByShopId(shopId);
     }
 
 }

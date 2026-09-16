@@ -4,15 +4,36 @@
 
 ## 安全类（生产前必须处理）
 
-- ⚠️ **JWT 无法真正吊销**：管理端 OAuth2 用 `JwtTokenStore`，`removeAccessToken()` 是空操作。注销依赖 Gateway 的 Redis 黑名单（key: `auth:blacklist:{jti}`）。logout 后 token 在有效期内（约 2 小时）依然可用；请求若绕过 Gateway，黑名单校验也会被跳过。
-- ⚠️ **OAuth2 client 凭据硬编码**在 `AuthorizationServerConfig`（`client=degel`, `secret=degel_secret`），e2e 用例也依赖它。
-- ⚠️ **多个密钥与基础设施地址入库在 `bootstrap.yml`**：App JWT secret、inner token、Redis/MinIO 凭据均有默认值。生产必须用环境变量或 Nacos 提供强值，共享密钥需定期轮换。
-- ⚠️ **Gateway CORS**：`addAllowedOriginPattern("*")` 与 `allowCredentials(true)` 同时启用，生产需按环境收紧来源。
-- ⚠️ **入站 header 伪造面**：Gateway 会剥离外部 `X-User-*` header，但绕过网关直连服务的路径没有这层保护（内网内调用时注意）。
+> 2026-09-15 批量加固：原安全类 5 项已全部处理（详见下方 2026-09-15 节）。生产部署仍需做的事：
+> 所有 `${ENV:默认值}` 占位的密钥/凭据（JWT_SECRET、INNER_TOKEN、OAUTH_CLIENT_*、DB/REDIS/MINIO 密码、DEGEL_CORS_ORIGINS）
+> **生产必须显式注入强值**——默认值只为本地开发保留（degel.sh 不带 env 启动依赖它们）。
+
+## 2026-09-15 管理端登录/登出闭环加固（SSO 审查修复）
+
+- ~~**logout 可被 refresh_token 绕过**~~（✅ 直接移除 refresh_token grant：前端从未使用，且 logout 只拉黑 access token 的 jti，refresh 换发的新 token 不在黑名单——砍掉 grant 即闭环。`AuthorizationServerConfig` 现仅 password 模式，access 2h）
+- ~~**管理端登录无防刷**~~（✅ degel-auth 新增 `LoginRateLimitFilter`：用户名维度计**失败**次数 5 次/分钟（成功登录不占配额，e2e 不受影响）+ IP 维度计全部请求 20 次/分钟；Redis 固定窗口 fail-open，超限 429 + error_description）
+- ~~**默认密钥靠"记得注入环境变量"约束**~~（✅ gateway/auth 各加 `SecurityStartupCheck`：prod profile 下命中默认值直接拒绝启动，非 prod 打 WARN 横幅。**生产部署约定：必须 `--spring.profiles.active=prod` 启动**）
+- ~~**改密/禁用用户不吊销已发 token**~~（✅ 用户级 token 版本：签发时写 `token_version` claim（读 `auth:tokenver:{userId}`），网关每请求比对，admin 侧改密/改资料/改角色/删除用户/停启用店铺时 INCR——该用户全部 token 立即失效。常量在 `Constants.AUTH_TOKEN_VERSION_PREFIX`）
+- ~~**网关白名单 startsWith 误放行同前缀路径**~~（✅ `AuthFilter.matchesPathPrefix` 段感知匹配：规则无尾斜杠=精确或 `rule+/` 前缀；`/auth/oauth/token-xxx` 不再被放行）
+- ~~**logout 尽力而为、失败静默**~~（✅ auth 侧解析失败返回 401（过期返回 ok 无事可做）；前端 outLogin 失败 console.warn 留痕。JwtTokenStore 删除 token 仍为空操作——黑名单是唯一吊销手段，属架构约束非 bug）
+- 前端：OAuth 凭据改 `UMI_APP_OAUTH_CLIENT_ID/SECRET` 构建期注入（默认值留本地）；401 踢回登录页带 `redirect`（经 isAllowedRedirect 白名单校验）；删死代码 getFakeCaptcha/mock user
+- **遗留（未修，需单独评估）**：token 仍存 localStorage（XSS 可窃取），迁 HttpOnly cookie 需网关统一种 cookie + 改 CORS credentials，影响面大未纳入本轮
+
+## 2026-09-15 安全与秒杀加固
+
+- ~~**JWT 无法真正吊销**~~（✅ 已修复并实测：`TokenController.logout` 写 `auth:blacklist:{jti}`（TTL=剩余有效期），网关 AuthFilter 校验；注销后原 token 请求 401）
+- ~~**OAuth2 client 凭据硬编码**~~（✅ 改 `degel.oauth.client-id/client-secret` 配置，`${OAUTH_CLIENT_ID:degel}` / `${OAUTH_CLIENT_SECRET:degel_secret}`，默认值保留给本地/e2e）
+- ~~**密钥入库 bootstrap.yml**~~（✅ 全部 yml 的 DB/Redis/MinIO 密码改 `${ENV:默认}` 占位；生产注入见上方说明）
+- ~~**Gateway CORS 全开**~~（✅ 改白名单 `degel.cors.origins`（默认 localhost:8000/10087，`DEGEL_CORS_ORIGINS` 覆盖）；实测陌生 origin 无 allow 头）
+- ~~**入站 header 伪造面（绕过网关直连服务）**~~（✅ 7 个后端微服务 `server.address: 127.0.0.1` 只监听回环，LAN 直连 9200-9206 面消除；网关保持全接口供真机调试。生产等价做法：服务端口不对外、网络隔离）
+- ~~**order/product 的 /inner/ 无鉴权**~~（✅ 补 InnerTokenFilter 对齐 marketing（app/order/product/marketing 四服务统一 X-Inner-Token 校验）；实测直连 9203 inner 403，正常 Feign 链路不受影响。网关侧 /inner 路径由 AuthFilter.isInternal 拦截（此前已存在））
+- **新增限流**（防刷）：C 端登录手机号 5 次/分钟 + IP 20 次/分钟（40027）、reserve 单用户 5 次/10 秒（40026）、场次列表 IP 60 次/分钟（40028）；Redis 固定窗口，fail-open，`RedisRateLimiter` 组件
+- **秒杀管理闭环**：编辑库存按 delta 增量同步 Redis 余量（减超钳 0，防超卖）、限购/场次时间同步 cfg；新增"重新预热"（仅启用且未开场次，防止重置放出已售量）
+- **压测脚本**：`scripts/SeckillLoad.java`（100 并发验证过：恰 9 成功/9 单落库/余量归 0 不为负）
 
 ## 测试类
 
-- ⚠️ **degel-app 测试未全绿**：service/集成测试存在已知失败（异常类型不匹配、Redisson lock mock、MyBatis Plus lambda cache、Java 8 API 兼容性）。不要在未重跑确认前声称测试套件通过；把它当发布门禁前需先修复。
+- ~~**degel-app 测试未全绿**~~（✅ 2026-09-15 已修复：68/68 三遍全绿，`mvn -pl degel-app test -o` 可当发布门禁。根因多为测试过时（mock 的旧接口/旧状态机）与 MyBatis-Plus lambda cache 缺初始化；详见当日 commit。**修复过程中发现并修掉一个真实主代码 bug**：`OrderServiceImpl.createOrder` 曾把 skuId 在 `deductStock` 之前加入回滚列表，锁成功但扣减失败时会 `restoreStock` 一笔从未扣过的库存 → 库存虚增，现已移到扣减成功之后并入队）
 
 ## 历史坑（已修复，留档防复发）
 

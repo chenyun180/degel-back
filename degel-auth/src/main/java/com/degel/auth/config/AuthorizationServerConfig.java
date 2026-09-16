@@ -28,9 +28,17 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
 
     @Value("${degel.security.jwt-secret}")
     private String jwtSecret;
+
+    /** OAuth2 client 凭据：默认值仅供本地开发（e2e 依赖），生产必须用环境变量覆盖强凭据 */
+    @Value("${degel.oauth.client-id:degel}")
+    private String clientId;
+
+    @Value("${degel.oauth.client-secret:degel_secret}")
+    private String clientSecret;
 
     @Override
     public void configure(AuthorizationServerSecurityConfigurer security) {
@@ -44,12 +52,13 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
     @Override
     public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
         clients.inMemory()
-                .withClient("degel")
-                .secret("{noop}degel_secret")
+                .withClient(clientId)
+                .secret("{noop}" + clientSecret)
                 .scopes("all")
-                .authorizedGrantTypes("password", "refresh_token")
-                .accessTokenValiditySeconds(7200)
-                .refreshTokenValiditySeconds(259200);
+                // 仅保留 password 模式：refresh_token 已移除——前端从未使用它，且 logout 只拉黑
+                // access token 的 jti，refresh 换发的新 token 会绕过黑名单（登出闭环缺口）
+                .authorizedGrantTypes("password")
+                .accessTokenValiditySeconds(7200);
     }
 
     @Override
@@ -79,6 +88,6 @@ public class AuthorizationServerConfig extends AuthorizationServerConfigurerAdap
 
     @Bean
     public TokenEnhancer customTokenEnhancer() {
-        return new CustomTokenEnhancer();
+        return new CustomTokenEnhancer(stringRedisTemplate);
     }
 }
