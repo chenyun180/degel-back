@@ -3,6 +3,7 @@ package com.degel.app.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.degel.app.feign.ProductFeignClient;
+import com.degel.app.service.FootprintService;
 import com.degel.app.service.impl.ProductServiceImpl;
 import com.degel.app.vo.AppSkuVO;
 import com.degel.app.vo.AppSpuDetailVO;
@@ -61,6 +62,10 @@ class ProductServiceTest {
 
     @Mock
     private ValueOperations<String, Object> valueOperations;
+
+    /** 主代码组装详情后会调用 footprintService.record 埋点，必须 mock 否则 NPE */
+    @Mock
+    private FootprintService footprintService;
 
     @InjectMocks
     private ProductServiceImpl productService;

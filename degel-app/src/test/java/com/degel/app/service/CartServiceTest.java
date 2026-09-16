@@ -11,7 +11,7 @@ import com.degel.app.vo.ProductSpuVO;
 import com.degel.app.vo.dto.CartAddReqVO;
 import com.degel.app.vo.dto.CartCheckReqVO;
 import com.degel.common.core.R;
-import com.degel.common.core.exception.BusinessException;
+import com.degel.app.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -76,11 +76,11 @@ class CartServiceTest {
         CartAddReqVO req = buildAddReq(skuId, 2);
         cartService.addToCart(USER_ID, req);
 
-        // then: 调用 updateById，数量变为 5
-        ArgumentCaptor<MallCart> captor = ArgumentCaptor.forClass(MallCart.class);
-        verify(mallCartMapper, times(1)).updateById(captor.capture());
+        // then: 主代码已改为 incrementQuantity 原子累加 SQL（防并发 TOCTOU 竞态），
+        // 验证以 (cartId, userId, 本次增量) 调用，且不产生新记录
+        verify(mallCartMapper, times(1)).incrementQuantity(500L, USER_ID, 2);
         verify(mallCartMapper, never()).insert(any());
-        assertThat(captor.getValue().getQuantity()).isEqualTo(5);
+        verify(mallCartMapper, never()).insertOrRevive(anyLong(), anyLong(), anyLong(), anyInt());
     }
 
     // ======================================================================
@@ -112,6 +112,7 @@ class CartServiceTest {
 
         // 不应有任何写操作
         verify(mallCartMapper, never()).updateById(any());
+        verify(mallCartMapper, never()).incrementQuantity(anyLong(), anyLong(), anyInt());
         verify(mallCartMapper, never()).insert(any());
     }
 

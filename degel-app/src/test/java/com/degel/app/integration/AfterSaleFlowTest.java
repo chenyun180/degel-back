@@ -307,13 +307,9 @@ class AfterSaleFlowTest {
         Long userId = 1L;
         Long orderId = 100L;
 
-        // 构造 status=1 的售后单
+        // 构造 status=1 的售后单（主代码已改为按 id 精确查询 getAfterSaleById）
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 1);
-
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(afterSaleInfo));
-        when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(page));
+        when(orderFeignClient.getAfterSaleById(afterSaleId)).thenReturn(R.ok(afterSaleInfo));
 
         // 构造退款流水
         MallPaymentLog refundLog = new MallPaymentLog();
@@ -356,11 +352,7 @@ class AfterSaleFlowTest {
         Long orderId = 101L;
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 0); // status=0
-
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(afterSaleInfo));
-        when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(page));
+        when(orderFeignClient.getAfterSaleById(afterSaleId)).thenReturn(R.ok(afterSaleInfo));
 
         AfterSaleDetailVO detail = afterSaleService.getAfterSaleDetail(afterSaleId, userId);
 
@@ -382,11 +374,7 @@ class AfterSaleFlowTest {
         Long orderId = 102L;
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 2); // status=2
-
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(afterSaleInfo));
-        when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(page));
+        when(orderFeignClient.getAfterSaleById(afterSaleId)).thenReturn(R.ok(afterSaleInfo));
 
         AfterSaleDetailVO detail = afterSaleService.getAfterSaleDetail(afterSaleId, userId);
 
@@ -405,11 +393,7 @@ class AfterSaleFlowTest {
         Long orderId = 103L;
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 1);
-
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(afterSaleInfo));
-        when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(page));
+        when(orderFeignClient.getAfterSaleById(afterSaleId)).thenReturn(R.ok(afterSaleInfo));
 
         // 退款流水不存在（selectOne 返回 null）
         when(mallPaymentLogMapper.selectOne(any())).thenReturn(null);
@@ -438,22 +422,19 @@ class AfterSaleFlowTest {
         Long attackerUserId = 999L; // 攻击者
         Long orderId = 104L;
 
-        // 真实 userId=1 的售后单
+        // 真实 userId=1 的售后单。主代码改为按 id 精确查询（getAfterSaleById）后，
+        // 查得到记录但归属校验不通过 → 抛 40016（无权查看该售后单）
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, actualUserId, 1);
+        when(orderFeignClient.getAfterSaleById(afterSaleId)).thenReturn(R.ok(afterSaleInfo));
 
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(afterSaleInfo));
-        // 注意：pageAfterSales 用 attackerUserId 查询（攻击者看自己的列表，不包含目标售后单）
-        when(orderFeignClient.pageAfterSales(eq(attackerUserId), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(new Page<>(1, 1000, 0))); // 空结果
-
-        // 攻击者查 afterSaleId=5（不属于自己），应抛 40400（售后单不存在）
+        // 攻击者查 afterSaleId=5（不属于自己），应被归属校验拦截
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> afterSaleService.getAfterSaleDetail(afterSaleId, attackerUserId));
 
         assertThat(ex.getCode())
-                .as("[AFTERSALE-03] 越权访问应返回 40400（售后单不存在于本用户列表）")
-                .isEqualTo(40400);
+                .as("[AFTERSALE-03] 越权访问应被归属校验拦截，返回 40016")
+                .isEqualTo(40016);
+        assertThat(ex.getMessage()).contains("无权");
     }
 
     /**
@@ -467,11 +448,7 @@ class AfterSaleFlowTest {
         Long orderId = 105L;
 
         AfterSaleInfoVO afterSaleInfo = buildAfterSaleInfoVO(afterSaleId, orderId, userId, 1);
-
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(afterSaleInfo));
-        when(orderFeignClient.pageAfterSales(eq(userId), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(page));
+        when(orderFeignClient.getAfterSaleById(afterSaleId)).thenReturn(R.ok(afterSaleInfo));
         when(mallPaymentLogMapper.selectOne(any())).thenReturn(null);
 
         afterSaleService.getAfterSaleDetail(afterSaleId, userId);

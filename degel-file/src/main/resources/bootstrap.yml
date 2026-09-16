@@ -1,4 +1,6 @@
 server:
+  # 仅监听回环：服务端口不对局域网暴露，杜绝绕过网关直连伪造 X-User-*/X-Shop-* 头（生产用网络隔离替代）
+  address: 127.0.0.1
   port: 9202
 
 spring:
@@ -18,6 +20,6 @@ spring:
 minio:
   endpoint: http://192.168.1.14:9000
   access-key: root
-  secret-key: root12345
+  secret-key: ${MINIO_SECRET_KEY:root12345}
   public-bucket: degel-public
   private-bucket: degel-private

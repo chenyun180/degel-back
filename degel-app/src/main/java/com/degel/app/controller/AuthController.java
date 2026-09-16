@@ -1,6 +1,8 @@
 package com.degel.app.controller;
 
+import com.degel.app.exception.BusinessException;
 import com.degel.app.service.AuthService;
+import com.degel.app.util.RedisRateLimiter;
 import com.degel.app.vo.WxLoginVO;
 import com.degel.app.vo.dto.LoginReqVO;
 import com.degel.app.vo.dto.WxLoginReqVO;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
 /**
@@ -21,7 +24,13 @@ import javax.validation.Valid;
 @RequiredArgsConstructor
 public class AuthController {
 
+    /** 登录防刷：同手机号 5 次/分钟、同 IP 20 次/分钟（BCrypt 校验约 50-100ms/次，是打满 CPU 的最廉价入口） */
+    private static final int LOGIN_PHONE_LIMIT = 5;
+    private static final int LOGIN_IP_LIMIT = 20;
+    private static final int LOGIN_WINDOW_SECONDS = 60;
+
     private final AuthService authService;
+    private final RedisRateLimiter rateLimiter;
 
     /**
      * 微信小程序登录
@@ -34,10 +43,15 @@ public class AuthController {
 
     /**
      * H5 账号密码登录
-     * POST /app/auth/login（无需 JWT）
+     * POST /app/auth/login（无需 JWT）。错误码：40027 尝试过于频繁
      */
     @PostMapping("/login")
-    public R<WxLoginVO> login(@Valid @RequestBody LoginReqVO req) {
+    public R<WxLoginVO> login(@Valid @RequestBody LoginReqVO req, HttpServletRequest request) {
+        String ip = RedisRateLimiter.clientIp(request);
+        if (!rateLimiter.allow("rl:login:phone:" + req.getPhone(), LOGIN_PHONE_LIMIT, LOGIN_WINDOW_SECONDS)
+                || !rateLimiter.allow("rl:login:ip:" + ip, LOGIN_IP_LIMIT, LOGIN_WINDOW_SECONDS)) {
+            throw BusinessException.of(40027, "登录尝试过于频繁，请稍后再试");
+        }
         return R.ok(authService.login(req));
     }
 

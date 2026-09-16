@@ -17,8 +17,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 
 import java.math.BigDecimal;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,6 +49,15 @@ class PayServiceTest {
     @Mock
     private OrderFeignClient orderFeignClient;
 
+    @Mock
+    private com.degel.app.feign.MarketingFeignClient marketingFeignClient;
+
+    @Mock
+    private RedissonClient redissonClient;
+
+    @Mock
+    private RLock payLock;
+
     @InjectMocks
     private PayServiceImpl payService;
 
@@ -55,10 +67,14 @@ class PayServiceTest {
 
     @Test
     @DisplayName("pay_duplicatePay_shouldThrowException — 同订单已存在pay流水时抛40018拒绝重复支付")
-    void pay_duplicatePay_shouldThrowException() {
+    void pay_duplicatePay_shouldThrowException() throws InterruptedException {
         // given: 订单属于当前用户且处于待付款
         OrderInfoVO orderInfo = buildPendingOrder(ORDER_ID, USER_ID);
         when(orderFeignClient.getOrder(ORDER_ID)).thenReturn(R.ok(orderInfo));
+
+        // pay() 内部有 Redisson 分布式锁（防并发重复支付），mock 为加锁成功
+        when(redissonClient.getLock("lock:pay:" + ORDER_ID)).thenReturn(payLock);
+        when(payLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
 
         // 已存在一条 direction=pay, status=0 的流水（重复支付场景）
         when(mallPaymentLogMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(1L);

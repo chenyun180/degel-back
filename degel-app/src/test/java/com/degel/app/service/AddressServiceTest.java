@@ -1,13 +1,17 @@
 package com.degel.app.service;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.degel.app.entity.MallAddress;
 import com.degel.app.exception.BusinessException;
 import com.degel.app.mapper.MallAddressMapper;
 import com.degel.app.service.impl.AddressServiceImpl;
 import com.degel.app.vo.AddressVO;
 import com.degel.app.vo.dto.AddressCreateReqVO;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +54,17 @@ class AddressServiceTest {
     private static final Long OTHER_UID  = 9999L;
     private static final Long ADDR_ID_1  = 10L;
     private static final Long ADDR_ID_2  = 20L;
+
+    @BeforeAll
+    static void initTableInfo() {
+        // MyBatis-Plus 3.5.x 中 LambdaUpdateWrapper.set() 在构造 wrapper 时就会解析 lambda 列名，
+        // 纯 Mockito 环境（无 MyBatis 启动流程）没有 TableInfo 缓存，会抛
+        // "can not find lambda cache for this entity"。这里手动初始化 MallAddress 的表元数据。
+        if (TableInfoHelper.getTableInfo(MallAddress.class) == null) {
+            TableInfoHelper.initTableInfo(
+                    new MapperBuilderAssistant(new MybatisConfiguration(), ""), MallAddress.class);
+        }
+    }
 
     // ================================================================
     // 测试用例 1：首个地址自动设为默认（isDefault = 1）

@@ -47,12 +47,9 @@ import static org.mockito.Mockito.*;
  * ORDER-01: ✅ createOrder() finally 块(L228-238)遍历 acquiredLocks 逐一 unlock
  *           ✅ cancelOrder() finally 块(L443-446)正确释放锁
  * ORDER-02: ✅ catch(BusinessException) 和 catch(Exception) 均调用 restoreDeductedStock()
- *           ⚠️ BUG: 库存回滚范围缺陷 —— lockedSkuIds 记录已成功加锁且 Feign 扣减成功的 skuId
- *              但当第 N 个 sku 加锁失败（!locked）时，抛出异常后进入 catch，
- *              此时第 N 个 sku 未加入 lockedSkuIds，库存回滚正确；
- *              但第 N 个 sku Feign deductStock 失败抛 BusinessException 时，
- *              lockedSkuIds 已包含该 skuId（锁已加入 acquiredLocks，L131），
- *              restoreDeductedStock 会尝试回滚一个实际上未成功扣减的 sku → 库存超发
+ *           ✅ ORDER-02-BUG-01 已修复：lockedSkuIds 原先在 deductStock 之前入队，
+ *              扣减失败的 sku 也会被 restoreStock 回滚（库存虚增）；
+ *              现已改为 deductStock 成功后才加入 lockedSkuIds（见 ORDER-02-T1/T2 回归测试）
  * ORDER-03: ✅ PayServiceImpl.pay()：步骤顺序为：INSERT payment_log(L78) → Feign updateOrderStatus(L85)
  *              符合"先写流水再改状态"的最终一致性原则，Feign 失败时仅记录日志，由补偿任务处理
  * ORDER-04: ✅ PayServiceImpl.pay() L57-65 通过查 payment_log(direction=pay,status=0) 数量做幂等校验
@@ -74,6 +71,9 @@ class OrderFlowTest {
     private MallPaymentLogMapper mallPaymentLogMapper;
     @Mock
     private RLock mockLock;
+    /** PayServiceImpl 构造器依赖 MarketingFeignClient（券核销），补齐避免注入为 null */
+    @Mock
+    private com.degel.app.feign.MarketingFeignClient marketingFeignClient;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -222,74 +222,139 @@ class OrderFlowTest {
     /**
      * [ORDER-02-T1] 单 sku 扣减失败时不应触发库存恢复（因为扣减未成功）
      *
-     * ⚠️ BUG 说明（ORDER-02-BUG-01）：
-     * 代码流程：
-     *   1. lock.tryLock() 成功 → acquiredLocks.add(lock), lockedSkuIds.add(skuId)  [L131-132]
-     *   2. stockFeignClient.deductStock() 失败（返回 false）→ 抛 BusinessException   [L136-139]
-     *   3. catch(BusinessException) → restoreDeductedStock(lockedSkuIds, ...)       [L221]
-     *   4. restoreDeductedStock 对 lockedSkuIds 中的 skuId 调用 restoreStock        [L249]
+     * 历史 BUG（ORDER-02-BUG-01，已修复）：
+     * 旧代码 lockedSkuIds.add(skuId) 在 deductStock 之前执行，扣减失败（返回 false）
+     * 抛异常进入 catch 后，restoreDeductedStock 会对这个"实际未扣减"的 sku 调用
+     * restoreStock，造成库存虚增。修复：deductStock 成功后才将 skuId 加入 lockedSkuIds。
      *
-     * BUG：lockedSkuIds.add(skuId) 在 deductStock 调用之前（L132 vs L136），
-     *       所以扣减失败的 sku 也会被加入 lockedSkuIds，导致 restoreDeductedStock
-     *       对一个实际上库存未被扣减的 sku 执行 restoreStock，造成库存虚增！
-     *
-     * 本测试验证此 BUG 的存在：扣减失败的 sku，restoreStock 不应被调用
+     * 本测试为回归测试：deductStock 返回 false 时，restoreStock 绝不能被调用。
      */
     @Test
-    @DisplayName("[ORDER-02-BUG] 扣减失败的 sku 不应触发 restoreStock（当前代码存在库存虚增 BUG）")
-    void testCreateOrder_stockDeductFail_shouldNotRestoreUndductedSku()
+    @DisplayName("[ORDER-02-T1] 扣减失败的 sku 不触发 restoreStock（回归：lockedSkuIds 只收录扣减成功的 sku）")
+    void testCreateOrder_stockDeductFail_shouldNotRestoreUndeductedSku()
             throws Exception {
 
-        // 此测试文档化 ORDER-02-BUG-01 的存在
-        // 预期行为：deductStock 返回 false → 该 sku 未实际扣减 → 不应调用 restoreStock
-        // 实际行为：lockedSkuIds 在 deductStock 前已加入 skuId �� restoreDeductedStock 会调用 restoreStock
+        Long userId = 1L;
+        Long skuId = 100L;
 
-        // 以下代码通过 mock 验证 restoreStock 的调用情况
-        // （由于方法是 private，通过观察 stockFeignClient mock 调用来判断）
+        OrderCreateReqVO req = new OrderCreateReqVO();
+        req.setSkuId(skuId);
+        req.setQuantity(1);
+        req.setAddressId(1L);
 
-        // 记录此 BUG：已知缺陷，等待修复
-        // Fix 方案：应在 deductStock 成功后才将 skuId 加入 lockedSkuIds
-        // 修改建议：
-        //   R<Boolean> deductResp = stockFeignClient.deductStock(deductVO);   // 先扣减
-        //   if (deductResp ... success) {
-        //       lockedSkuIds.add(skuId);   // 扣减成功后才加入回滚列表
-        //   } else {
-        //       throw ...;
-        //   }
+        // ProductFeignClient mock：SKU 在售、库存充足（走到扣减分支）
+        com.degel.app.feign.ProductFeignClient productFeignClient = mock(
+                com.degel.app.feign.ProductFeignClient.class);
+        com.degel.app.vo.ProductSkuVO skuVO = new com.degel.app.vo.ProductSkuVO();
+        skuVO.setId(skuId);
+        skuVO.setSpuId(10L);
+        skuVO.setSkuName("测试SKU");
+        skuVO.setStatus(1);
+        skuVO.setStock(10);
+        skuVO.setPrice(BigDecimal.valueOf(99.00));
+        when(productFeignClient.batchGetSku(anyList()))
+                .thenReturn(R.ok(Collections.singletonList(skuVO)));
 
-        System.out.println("[ORDER-02-BUG-01] 已记录：lockedSkuIds 在 deductStock 前入队，" +
-                "扣减失败时 restoreDeductedStock 会对未扣减 sku 调用 restoreStock，导致库存虚增。" +
-                "Fix：应在 deductStock 成功后再将 skuId 加入 lockedSkuIds（OrderServiceImpl.java:131-139）");
+        // Redisson 锁可获取
+        when(redissonClient.getLock(anyString())).thenReturn(mockLock);
+        when(mockLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
+        when(mockLock.isHeldByCurrentThread()).thenReturn(true);
 
-        // 标记为已知 BUG，测试通过（记录问题，不阻断流水线）
-        assertThat(true).as("[ORDER-02-BUG-01] BUG 已记录，见上方注释").isTrue();
+        // deductStock 返回 false：库存并发不足，实际未扣减
+        when(stockFeignClient.deductStock(any())).thenReturn(R.ok(false));
+
+        // 通过反射注入 productFeignClient（与 ORDER-01-T1 相同做法）
+        java.lang.reflect.Field f = OrderServiceImpl.class.getDeclaredField("productFeignClient");
+        f.setAccessible(true);
+        f.set(orderService, productFeignClient);
+
+        // 扣减失败 → 抛业务异常
+        assertThrows(BusinessException.class, () -> orderService.createOrder(req, userId));
+
+        // 回归断言：未扣减成功的 sku 不得恢复（否则库存虚增）
+        verify(stockFeignClient, never()).restoreStock(any());
     }
 
     /**
-     * [ORDER-02-T2] 正常多 sku 场景：第 N 个 sku 加锁失败，前 N-1 个已扣减库存应被恢复
+     * [ORDER-02-T2] 多 sku 场景：第 2 个 sku 扣减失败，第 1 个已扣减的库存必须被恢复
      *
-     * 验证：restoreDeductedStock 对 lockedSkuIds 内的所有 sku 调用 restoreStock
+     * 验证：restoreDeductedStock 只对 lockedSkuIds 内"已实际扣减"的 sku 调用 restoreStock，
+     * 扣减失败的那个 sku 不能被恢复（回归 ORDER-02-BUG-01）。
      */
     @Test
-    @DisplayName("[ORDER-02-T2] 第 N 个 sku 操作失败时前 N-1 个已扣减库存应被恢复")
+    @DisplayName("[ORDER-02-T2] 第 2 个 sku 扣减失败时，仅恢复第 1 个已扣减的 sku")
     void testCreateOrder_partialFailure_restoresAlreadyDeductedStock()
-            throws InterruptedException {
+            throws Exception {
 
-        // 通过 mock stockFeignClient 验证：
-        // sku1 扣减成功，sku2 扣减失败 → sku1 的 restoreStock 应被调用
-        // （此处因 lockedSkuIds BUG，实际上 sku2 的 restoreStock 也会被调用）
+        Long userId = 1L;
 
-        when(stockFeignClient.deductStock(argThat(v -> v.getSkuId().equals(200L))))
-                .thenReturn(R.ok(true));   // sku1 扣减成功
+        // 购物车模式：两条记录 → sku1=200（扣减成功）、sku2=201（扣减失败）
+        OrderCreateReqVO req = new OrderCreateReqVO();
+        req.setCartIds(Arrays.asList(601L, 602L));
+        req.setAddressId(1L);
 
-        when(stockFeignClient.deductStock(argThat(v -> v.getSkuId().equals(201L))))
-                .thenReturn(R.ok(false));  // sku2 扣减失败
+        com.degel.app.entity.MallCart cart1 = new com.degel.app.entity.MallCart();
+        cart1.setId(601L);
+        cart1.setUserId(userId);
+        cart1.setSpuId(10L);
+        cart1.setSkuId(200L);
+        cart1.setQuantity(1);
+        com.degel.app.entity.MallCart cart2 = new com.degel.app.entity.MallCart();
+        cart2.setId(602L);
+        cart2.setUserId(userId);
+        cart2.setSpuId(10L);
+        cart2.setSkuId(201L);
+        cart2.setQuantity(2);
+        when(mallCartMapper.selectList(any())).thenReturn(Arrays.asList(cart1, cart2));
 
+        // 两个 SKU 均在售、库存充足（fast-fail 预判通过，走到扣减分支）
+        com.degel.app.feign.ProductFeignClient productFeignClient = mock(
+                com.degel.app.feign.ProductFeignClient.class);
+        com.degel.app.vo.ProductSkuVO sku1 = new com.degel.app.vo.ProductSkuVO();
+        sku1.setId(200L);
+        sku1.setSpuId(10L);
+        sku1.setSkuName("测试SKU-200");
+        sku1.setStatus(1);
+        sku1.setStock(100);
+        sku1.setPrice(BigDecimal.valueOf(50.00));
+        com.degel.app.vo.ProductSkuVO sku2 = new com.degel.app.vo.ProductSkuVO();
+        sku2.setId(201L);
+        sku2.setSpuId(10L);
+        sku2.setSkuName("测试SKU-201");
+        sku2.setStatus(1);
+        sku2.setStock(100);
+        sku2.setPrice(BigDecimal.valueOf(30.00));
+        when(productFeignClient.batchGetSku(anyList()))
+                .thenReturn(R.ok(Arrays.asList(sku1, sku2)));
+
+        // Redisson 锁可获取
+        when(redissonClient.getLock(anyString())).thenReturn(mockLock);
+        when(mockLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
+        when(mockLock.isHeldByCurrentThread()).thenReturn(true);
+
+        // sku1 扣减成功、sku2 扣减失败。
+        // 注意 argThat 匹配器必须判空：第二次 when() 桩注册时会以 null 参数匹配第一次桩
+        when(stockFeignClient.deductStock(
+                argThat(v -> v != null && Long.valueOf(200L).equals(v.getSkuId()))))
+                .thenReturn(R.ok(true));
+        when(stockFeignClient.deductStock(
+                argThat(v -> v != null && Long.valueOf(201L).equals(v.getSkuId()))))
+                .thenReturn(R.ok(false));
         when(stockFeignClient.restoreStock(any())).thenReturn(R.ok(true));
 
-        // 验证 restoreStock 的调用（实际调用取决于 lockedSkuIds 内容）
-        // 此测试主要文档化预期行为 vs 实际行为
-        assertThat(stockFeignClient).isNotNull();
+        // 反射注入 productFeignClient
+        java.lang.reflect.Field f = OrderServiceImpl.class.getDeclaredField("productFeignClient");
+        f.setAccessible(true);
+        f.set(orderService, productFeignClient);
+
+        // sku2 扣减失败 → 整体回滚并抛业务异常
+        assertThrows(BusinessException.class, () -> orderService.createOrder(req, userId));
+
+        // 只恢复已扣减成功的 sku1（数量 1），不恢复扣减失败的 sku2
+        ArgumentCaptor<StockRestoreVO> restoreCaptor = ArgumentCaptor.forClass(StockRestoreVO.class);
+        verify(stockFeignClient, times(1)).restoreStock(restoreCaptor.capture());
+        assertThat(restoreCaptor.getValue().getSkuId()).isEqualTo(200L);
+        assertThat(restoreCaptor.getValue().getQuantity()).isEqualTo(1);
     }
 
     // =========================================================
@@ -308,13 +373,17 @@ class OrderFlowTest {
      */
     @Test
     @DisplayName("[ORDER-03-T1] pay() 必须先写 payment_log 再 Feign 更新订单（最终一致性）")
-    void testPay_writePaymentLogBeforeFeignUpdate() {
+    void testPay_writePaymentLogBeforeFeignUpdate() throws InterruptedException {
         Long orderId = 1L;
         Long userId = 1L;
 
         // 构造 status=0 的订单
         OrderInfoVO orderInfo = buildOrderInfoVO(orderId, userId, 0);
         when(orderFeignClient.getOrder(orderId)).thenReturn(R.ok(orderInfo));
+
+        // pay() 内部有 Redisson 分布式锁（防并发重复支付），mock 为加锁成功
+        when(redissonClient.getLock("lock:pay:" + orderId)).thenReturn(mockLock);
+        when(mockLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
 
         // 幂等校验：无已有支付记录
         when(mallPaymentLogMapper.selectCount(any())).thenReturn(0L);
@@ -358,12 +427,15 @@ class OrderFlowTest {
      */
     @Test
     @DisplayName("[ORDER-03-T2] Feign 更新订单失败时 pay() 不抛异常，已写 payment_log 保证最终一致性")
-    void testPay_feignUpdateFails_doesNotThrowException() {
+    void testPay_feignUpdateFails_doesNotThrowException() throws InterruptedException {
         Long orderId = 2L;
         Long userId = 1L;
 
         OrderInfoVO orderInfo = buildOrderInfoVO(orderId, userId, 0);
         when(orderFeignClient.getOrder(orderId)).thenReturn(R.ok(orderInfo));
+        // pay() 内部 Redisson 分布式锁，mock 加锁成功
+        when(redissonClient.getLock("lock:pay:" + orderId)).thenReturn(mockLock);
+        when(mockLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
         when(mallPaymentLogMapper.selectCount(any())).thenReturn(0L);
         doAnswer(inv -> {
             MallPaymentLog log = inv.getArgument(0);
@@ -401,12 +473,16 @@ class OrderFlowTest {
      */
     @Test
     @DisplayName("[ORDER-04-T1] 幂等校验：同一订单已支付时拒绝重复支付")
-    void testPay_idempotency_rejectsDuplicatePayment() {
+    void testPay_idempotency_rejectsDuplicatePayment() throws InterruptedException {
         Long orderId = 3L;
         Long userId = 1L;
 
         OrderInfoVO orderInfo = buildOrderInfoVO(orderId, userId, 0);
         when(orderFeignClient.getOrder(orderId)).thenReturn(R.ok(orderInfo));
+
+        // pay() 内部 Redisson 分布式锁，mock 加锁成功
+        when(redissonClient.getLock("lock:pay:" + orderId)).thenReturn(mockLock);
+        when(mockLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
 
         // 模拟已存在支付流水
         when(mallPaymentLogMapper.selectCount(any())).thenReturn(1L);
@@ -431,12 +507,15 @@ class OrderFlowTest {
      */
     @Test
     @DisplayName("[ORDER-04-T2] 幂等查询条件：orderId + direction=pay + status=0")
-    void testPay_idempotencyQueryConditions() {
+    void testPay_idempotencyQueryConditions() throws InterruptedException {
         Long orderId = 4L;
         Long userId = 1L;
 
         OrderInfoVO orderInfo = buildOrderInfoVO(orderId, userId, 0);
         when(orderFeignClient.getOrder(orderId)).thenReturn(R.ok(orderInfo));
+        // pay() 内部 Redisson 分布式锁，mock 加锁成功
+        when(redissonClient.getLock("lock:pay:" + orderId)).thenReturn(mockLock);
+        when(mockLock.tryLock(3, 10, TimeUnit.SECONDS)).thenReturn(true);
         when(mallPaymentLogMapper.selectCount(any())).thenReturn(0L);
 
         doAnswer(inv -> {

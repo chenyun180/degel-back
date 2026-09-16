@@ -1,4 +1,6 @@
 server:
+  # 仅监听回环：服务端口不对局域网暴露，杜绝绕过网关直连伪造 X-User-*/X-Shop-* 头（生产用网络隔离替代）
+  address: 127.0.0.1
   port: 9201
 
 spring:
@@ -14,11 +16,11 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_admin?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: 123456
+    password: ${DB_PASSWORD:123456}
   redis:
     host: 192.168.1.14
     port: 6379
-    password: root12345
+    password: ${REDIS_PASSWORD:root12345}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml

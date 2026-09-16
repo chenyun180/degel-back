@@ -1,4 +1,6 @@
 server:
+  # 仅监听回环：服务端口不对局域网暴露，杜绝绕过网关直连伪造 X-User-*/X-Shop-* 头（生产用网络隔离替代）
+  address: 127.0.0.1
   port: 9200
 
 spring:
@@ -13,9 +15,13 @@ spring:
   redis:
     host: 192.168.1.14
     port: 6379
-    password: root12345
+    password: ${REDIS_PASSWORD:root12345}
 
 degel:
   security:
     # 管理端 JWT 密钥：生产必须用环境变量 JWT_SECRET 覆盖默认值（与 degel-gateway 保持一致）
     jwt-secret: ${JWT_SECRET:degel-jwt-secret-key-2024-platform-admin}
+  oauth:
+    # OAuth2 client 凭据：默认值仅供本地开发（前端 proxy 与 e2e 依赖），生产必须覆盖
+    client-id: ${OAUTH_CLIENT_ID:degel}
+    client-secret: ${OAUTH_CLIENT_SECRET:degel_secret}

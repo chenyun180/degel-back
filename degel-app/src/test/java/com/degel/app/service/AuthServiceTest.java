@@ -75,9 +75,11 @@ class AuthServiceTest {
         ReflectionTestUtils.setField(authService, "wxSecret",   "testSecret");
         ReflectionTestUtils.setField(authService, "wxTokenUrl", "https://fake-wx.example.com/jscode2session");
 
-        // JWT 配置：密钥≥32字节，过期时间7天
-        when(appJwtConfig.getSecret()).thenReturn(JWT_SECRET);
-        when(appJwtConfig.getExpiration()).thenReturn(604800L);
+        // JWT 配置：密钥≥32字节，过期时间7天。
+        // 登录失败/封禁等用例在校验阶段就抛异常、不会走到签发 JWT，
+        // 因此这两个 stub 对它们是"多余的"，用 lenient 规避严格模式报错
+        lenient().when(appJwtConfig.getSecret()).thenReturn(JWT_SECRET);
+        lenient().when(appJwtConfig.getExpiration()).thenReturn(604800L);
     }
 
     // ================================================================

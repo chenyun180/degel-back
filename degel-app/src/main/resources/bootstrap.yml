@@ -1,4 +1,6 @@
 server:
+  # 仅监听回环：服务端口不对局域网暴露，杜绝绕过网关直连伪造 X-User-*/X-Shop-* 头（生产用网络隔离替代）
+  address: 127.0.0.1
   port: 9205
 
 spring:
@@ -18,7 +20,7 @@ spring:
   redis:
     host: 192.168.1.14
     port: 6379
-    password: root12345
+    password: ${REDIS_PASSWORD:root12345}
     database: 1   # C端独立 DB，与 admin 端隔离
   security:
     ignored: "/**"   # 关闭 Spring Security 默认拦截，由 AppSecurityFilter 接管

@@ -1,4 +1,6 @@
 server:
+  # 仅监听回环：服务端口不对局域网暴露，杜绝绕过网关直连伪造 X-User-*/X-Shop-* 头（生产用网络隔离替代）
+  address: 127.0.0.1
   port: 9203
 
 spring:
@@ -14,7 +16,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_product?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: 123456
+    password: ${DB_PASSWORD:123456}
   # C 端商品搜索 ES 集群（192.168.1.14 三节点，IK 分词）。多 uri 由 RestClient 轮询 + 故障转移。
   # 超时预算：ES 全停时 RestClient 逐节点尝试（1s 连接 ×3 + 2s 读）最坏约 4s 必须降级完成，
   # 否则超过 degel-app Feign read-timeout(5s)，C 端会拿到超时错误而非 MySQL 兜底结果
@@ -35,3 +37,8 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+degel:
+  inner:
+    # 与 degel-app/degel-order FeignConfig 发送的 X-Inner-Token 一致（inner 接口鉴权）
+    token: ${INNER_TOKEN:degel-inner-service-token-2024}

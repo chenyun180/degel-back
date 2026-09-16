@@ -142,14 +142,17 @@ public class OrderServiceImpl implements OrderService {
                     throw BusinessException.of(50001, "系统繁忙，请稍后重试");
                 }
                 acquiredLocks.add(lock);
-                lockedSkuIds.add(skuId);
 
                 // Feign 扣减库存
                 StockDeductVO deductVO = new StockDeductVO(skuId, needQty);
                 R<Boolean> deductResp = stockFeignClient.deductStock(deductVO);
                 if (deductResp == null || deductResp.getCode() != 200 || !Boolean.TRUE.equals(deductResp.getData())) {
+                    // 注意：此处不能把该 skuId 加入 lockedSkuIds——扣减未成功，
+                    // 若加入会导致回滚时 restoreStock 恢复一笔从未扣减的库存，造成库存虚增
                     throw BusinessException.of(40012, "库存不足，扣减失败");
                 }
+                // 扣减成功后才纳入回滚列表（lockedSkuIds 语义 = "已实际扣减、失败需恢复"的 sku）
+                lockedSkuIds.add(skuId);
             }
 
             // Step 5: Feign 查收货地址，校验归属

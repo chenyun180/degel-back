@@ -75,8 +75,8 @@ class AfterSaleServiceTest {
                     assertThat(be.getMessage()).contains("已完成");
                 });
 
-        // 不应查询售后单列表，也不应创建
-        verify(orderFeignClient, never()).pageAfterSales(any(), any(), any(), any());
+        // 不应触发查重，也不应创建
+        verify(orderFeignClient, never()).existsActiveAfterSale(any(), any());
         verify(orderFeignClient, never()).createAfterSale(any());
     }
 
@@ -91,12 +91,9 @@ class AfterSaleServiceTest {
         OrderInfoVO orderInfo = buildOrderInfoVO(ORDER_ID, USER_ID, 3);
         when(orderFeignClient.getOrder(ORDER_ID)).thenReturn(R.ok(orderInfo));
 
-        // 已存在一条 status=0（待审核）的售后单
-        AfterSaleInfoVO existingAfterSale = buildAfterSaleInfoVO(AFTERSALE_ID, ORDER_ID, USER_ID, 0);
-        Page<AfterSaleInfoVO> page = new Page<>(1, 100, 1);
-        page.setRecords(Collections.singletonList(existingAfterSale));
-        when(orderFeignClient.pageAfterSales(eq(USER_ID), isNull(), eq(1), eq(100)))
-                .thenReturn(R.ok(page));
+        // 已存在一条进行中（status IN 0,1）的售后单。
+        // 主代码查重已从"分页拉列表内存过滤"改为精确查重接口 existsActiveAfterSale
+        when(orderFeignClient.existsActiveAfterSale(ORDER_ID, USER_ID)).thenReturn(R.ok(true));
 
         com.degel.app.vo.dto.AfterSaleCreateReqVO reqVO = buildAfterSaleReq(ORDER_ID, "质量问题");
 
@@ -118,18 +115,15 @@ class AfterSaleServiceTest {
     // ======================================================================
 
     @Test
-    @DisplayName("getDetail_agreed_shouldIncludeRefundLog — 售后已同意时详情包含退款流水信息")
+    @DisplayName("getDetail_status1_shouldIncludeRefundLog — 售后单status=1(退货中/已同意)时详情包含退款流水")
     void getDetail_agreed_shouldIncludeRefundLog() {
         // given: 存在一条已同意（status=1）的售后单
         AfterSaleInfoVO agreedAfterSale = buildAfterSaleInfoVO(AFTERSALE_ID, ORDER_ID, USER_ID, 1);
         agreedAfterSale.setOrderNo("ORDER20260329001");
         agreedAfterSale.setRefundAmount(new BigDecimal("199.00"));
 
-        // pageAfterSales 返回包含该售后单的列表
-        Page<AfterSaleInfoVO> page = new Page<>(1, 1000, 1);
-        page.setRecords(Collections.singletonList(agreedAfterSale));
-        when(orderFeignClient.pageAfterSales(eq(USER_ID), isNull(), eq(1), eq(1000)))
-                .thenReturn(R.ok(page));
+        // 主代码已改为按 id 精确查询售后单（getAfterSaleById），不再分页拉全量
+        when(orderFeignClient.getAfterSaleById(AFTERSALE_ID)).thenReturn(R.ok(agreedAfterSale));
 
         // 对应的退款流水
         MallPaymentLog refundLog = buildRefundLog(77777L, ORDER_ID, USER_ID,
@@ -139,10 +133,12 @@ class AfterSaleServiceTest {
         // when
         AfterSaleDetailVO detail = afterSaleService.getAfterSaleDetail(AFTERSALE_ID, USER_ID);
 
-        // then: 基础字段
+        // then: 基础字段。
+        // 状态机与 degel-order 对齐后 status=1 的语义是"退货中"（0待审核/1退货中/3已完成/5已拒绝），
+        // 触发退款流水查询的条件仍是 status=1
         assertThat(detail.getId()).isEqualTo(AFTERSALE_ID);
         assertThat(detail.getStatus()).isEqualTo(1);
-        assertThat(detail.getStatusDesc()).isEqualTo("已同意");
+        assertThat(detail.getStatusDesc()).isEqualTo("退货中");
 
         // 退款流水必须存在
         assertThat(detail.getPayLog()).isNotNull();

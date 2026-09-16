@@ -93,10 +93,8 @@ class OrderServiceTest {
         R<List<ProductSkuVO>> skuResp = R.ok(Collections.singletonList(sku));
         when(productFeignClient.batchGetSku(Collections.singletonList(SKU_ID))).thenReturn(skuResp);
 
-        // 模拟 Redisson 锁可以加锁成功（走到库存校验分支后才抛异常）
-        when(redissonClient.getLock(anyString())).thenReturn(rLock);
-        when(rLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(rLock.isHeldByCurrentThread()).thenReturn(true);
+        // 注：主代码的库存 fast-fail 预判在加 Redisson 锁之前执行（OrderServiceImpl Step 4 循环开头），
+        // 此用例到不了加锁分支，无需 mock 锁相关依赖
 
         // when & then
         assertThatThrownBy(() -> orderService.createOrder(req, USER_ID))
