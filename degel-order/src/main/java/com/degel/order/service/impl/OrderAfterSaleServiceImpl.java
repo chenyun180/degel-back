@@ -82,7 +82,7 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         update(updateWrapper);
 
         // 整单退款完成（agree + type=1 仅退款）→ 退回优惠券（2→未过期?4:5，幂等）+ 写退款流水。
-        // 补贴记账冲销口径：报表按售后状态剔除该单补贴，一期不加冲销列。
+        // 补贴冲减口径：报表 SQL 以 after_sale status=3 为准剔除该单补贴（NOT EXISTS，无需冲销列）。
         // ⚠️ Feign 在事务内 best-effort：失败仅记日志（券状态可人工/重试修复），不影响售后主流程
         if ("agree".equals(vo.getAction()) && afterSale.getType() == 1) {
             try {

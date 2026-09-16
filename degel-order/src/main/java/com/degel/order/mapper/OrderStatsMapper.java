@@ -34,17 +34,22 @@ public interface OrderStatsMapper {
 
     /**
      * 本月平台补贴（三期优惠券报表）。
-     * 口径同上：已支付且非取消；售后退款不冲减补贴，数值略偏高（known-issues 已记）
+     * 口径同上：已支付且非取消；退款完成的订单（order_after_sale status=3）剔除补贴，
+     * 已拒绝/待处理的售后单仍计入（钱未退）。GMV 维持不冲减口径（与流水卡片文案一致）。
      */
-    @Select("SELECT IFNULL(SUM(platform_subsidy), 0) FROM order_info "
-            + "WHERE del_flag = 0 AND status IN (1,2,3,5) "
-            + "AND pay_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01')")
+    @Select("SELECT IFNULL(SUM(platform_subsidy), 0) FROM order_info o "
+            + "WHERE o.del_flag = 0 AND o.status IN (1,2,3,5) "
+            + "AND o.pay_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01') "
+            + "AND NOT EXISTS (SELECT 1 FROM order_after_sale a "
+            + "WHERE a.order_id = o.id AND a.status = 3 AND a.del_flag = 0)")
     BigDecimal sumMonthPlatformSubsidy();
 
-    /** 本月指定店铺补贴（店铺工作台） */
-    @Select("SELECT IFNULL(SUM(shop_subsidy), 0) FROM order_info "
-            + "WHERE del_flag = 0 AND status IN (1,2,3,5) "
-            + "AND pay_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND shop_id = #{shopId}")
+    /** 本月指定店铺补贴（店铺工作台；退款完成的订单剔除，同上口径） */
+    @Select("SELECT IFNULL(SUM(shop_subsidy), 0) FROM order_info o "
+            + "WHERE o.del_flag = 0 AND o.status IN (1,2,3,5) "
+            + "AND o.pay_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND o.shop_id = #{shopId} "
+            + "AND NOT EXISTS (SELECT 1 FROM order_after_sale a "
+            + "WHERE a.order_id = o.id AND a.status = 3 AND a.del_flag = 0)")
     BigDecimal sumMonthShopSubsidy(@Param("shopId") Long shopId);
 
     /** 待发货订单数（已付款待发货） */

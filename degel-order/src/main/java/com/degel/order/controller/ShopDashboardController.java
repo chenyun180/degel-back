@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * 店铺工作台统计（GMV/订单数/补贴都在 degel_order 库，故由本服务出数；
  * 库存预警/待审核商品等商品域指标仍在 degel-product /dashboard，前端双接口并行）。
- * 口径：已支付且非取消（status IN (1,2,3,5)）；售后不冲减，数值略偏高（known-issues 已记）。
+ * 口径：已支付且非取消（status IN (1,2,3,5)）；GMV 不冲减、补贴剔除退款完成订单（after_sale status=3）。
  */
 @RestController
 @RequestMapping("/shop/dashboard")

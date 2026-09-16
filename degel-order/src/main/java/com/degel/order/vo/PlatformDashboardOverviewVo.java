@@ -23,7 +23,7 @@ public class PlatformDashboardOverviewVo {
     /** 待发货订单数（已付款待发货） */
     private Integer pendingShipCount;
 
-    /** 本月平台补贴（优惠券 platform_subsidy 合计；售后不冲减口径） */
+    /** 本月平台补贴（优惠券 platform_subsidy 合计；退款完成订单已剔除） */
     private BigDecimal monthPlatformSubsidy;
 
     /** 店铺流水 TOP5 */
