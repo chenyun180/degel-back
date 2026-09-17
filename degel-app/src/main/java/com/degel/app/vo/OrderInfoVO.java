@@ -29,6 +29,12 @@ public class OrderInfoVO {
     private BigDecimal platformSubsidy;
     /** 店铺补贴（店铺承担部分） */
     private BigDecimal shopSubsidy;
+    /** 积分抵扣：本单使用的积分数 */
+    private Integer pointsUsed;
+    /** 积分抵扣：抵扣金额（已并入 discountAmount 口径） */
+    private BigDecimal pointsDeduct;
+    /** 本单获得积分数（确认收货后回写） */
+    private Integer pointsEarned;
     /** 0待付款 1待发货 2待收货 3已完成 4已取消 5已退款 */
     private Integer status;
 

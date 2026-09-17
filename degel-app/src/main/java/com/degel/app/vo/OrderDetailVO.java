@@ -43,6 +43,12 @@ public class OrderDetailVO {
     private BigDecimal freightAmount;
     private BigDecimal discountAmount;
     private BigDecimal payAmount;
+    /** 积分抵扣：本单使用的积分数 */
+    private Integer pointsUsed;
+    /** 积分抵扣：抵扣金额（已并入 discountAmount 口径） */
+    private BigDecimal pointsDeduct;
+    /** 本单获得积分数（确认收货后回写） */
+    private Integer pointsEarned;
 
     // ======== 收货信息 ========
     private String receiverName;

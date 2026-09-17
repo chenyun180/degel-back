@@ -664,6 +664,9 @@ public class OrderServiceImpl implements OrderService {
         vo.setOrderType(info.getOrderType());
         vo.setStatus(info.getStatus());
         vo.setStatusDesc(getStatusDesc(info.getStatus()));
+        vo.setPointsUsed(info.getPointsUsed());
+        vo.setPointsDeduct(info.getPointsDeduct());
+        vo.setPointsEarned(info.getPointsEarned());
         vo.setRemark(info.getRemark());
         vo.setCancelReason(info.getCancelReason());
         vo.setCreateTime(info.getCreateTime());
