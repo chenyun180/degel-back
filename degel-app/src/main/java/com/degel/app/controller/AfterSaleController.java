@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
  * C-10: POST /app/aftersale          申请退款
  * C-11: GET  /app/aftersale          退款列表
  * C-12: GET  /app/aftersale/{id}     退款详情
+ * C-13: PUT  /app/aftersale/{id}/arbitrate   申请平台介入
  */
 @RestController
 @RequestMapping("/app/aftersale")
@@ -55,5 +56,15 @@ public class AfterSaleController {
         Long userId = UserContext.getUserId();
         AfterSaleDetailVO result = afterSaleService.getAfterSaleDetail(id, userId);
         return R.ok(result);
+    }
+
+    /**
+     * C-13: 申请平台介入（仅已拒绝的售后单可申请）
+     */
+    @PutMapping("/{id}/arbitrate")
+    public R<Void> applyArbitrate(@PathVariable Long id) {
+        Long userId = UserContext.getUserId();
+        afterSaleService.applyArbitrate(id, userId);
+        return R.ok();
     }
 }

@@ -196,7 +196,7 @@ public class PayServiceImpl implements PayService {
         payLog.setAmount(reqVO.getAmount());
         payLog.setDirection("refund");
         payLog.setStatus(0);
-        payLog.setRemark("售后退款");
+        payLog.setRemark(reqVO.getRemark() != null ? reqVO.getRemark() : "售后退款");
         payLog.setCreateTime(LocalDateTime.now());
         mallPaymentLogMapper.insert(payLog);
         return payLog.getId();

@@ -72,6 +72,16 @@ public class OrderController {
     }
 
     /**
+     * C-12: 取消已付款订单并全额退款（未发货秒退：原子 CAS + 库存/券/积分回滚 + 退款流水）
+     */
+    @PutMapping("/{orderId}/cancel-refund")
+    public R<Void> cancelPaidOrder(@PathVariable Long orderId) {
+        Long userId = UserContext.getUserId();
+        orderService.cancelPaidOrder(orderId, userId);
+        return R.ok();
+    }
+
+    /**
      * C-06: 确认收货
      */
     @PutMapping("/{orderId}/receive")

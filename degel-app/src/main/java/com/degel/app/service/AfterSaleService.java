@@ -37,4 +37,9 @@ public interface AfterSaleService {
      * @return 详情
      */
     AfterSaleDetailVO getAfterSaleDetail(Long id, Long userId);
+
+    /**
+     * C-13: 申请平台介入（仅已拒绝的售后单，order 侧 CAS 5→6）
+     */
+    void applyArbitrate(Long id, Long userId);
 }

@@ -50,6 +50,13 @@ public interface MarketingFeignClient {
     @PostMapping("/unlock")
     R<Void> unlock(@RequestBody CouponOrderRefVO reqVO);
 
+    /**
+     * 已核销券按订单退回（status 2→4 可再用/5 作废，幂等）。
+     * 支付后取消（status=1 取消退款）用——此时券已 confirm，unlock 的锁定语义不适用
+     */
+    @PostMapping("/return")
+    R<Void> returnCoupon(@RequestBody java.util.Map<String, Long> req);
+
     /** 核销（支付成功） */
     @PostMapping("/confirm")
     R<Void> confirm(@RequestBody CouponConfirmReqVO reqVO);

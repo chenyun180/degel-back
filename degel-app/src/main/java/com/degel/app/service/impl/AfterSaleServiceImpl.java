@@ -142,6 +142,7 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         detail.setReason(targetInfo.getReason());
         detail.setRefundAmount(targetInfo.getRefundAmount());
         detail.setMerchantRemark(targetInfo.getMerchantRemark());
+        detail.setPlatformRemark(targetInfo.getPlatformRemark());
         detail.setCreateTime(targetInfo.getCreateTime());
         detail.setUpdateTime(targetInfo.getUpdateTime());
 
@@ -187,9 +188,25 @@ public class AfterSaleServiceImpl implements AfterSaleService {
         switch (status) {
             case 0: return "待审核";
             case 1: return "退货中";
+            case 2: return "待商家收货";
             case 3: return "已完成";
             case 5: return "已拒绝";
+            case 6: return "平台介入中";
+            case 7: return "仲裁维持拒绝";
             default: return "未知";
+        }
+    }
+
+    // =========================================================
+    // C-13: 用户申请平台介入（仅已拒绝售后单）
+    // =========================================================
+
+    @Override
+    public void applyArbitrate(Long id, Long userId) {
+        R<Void> resp = orderFeignClient.applyArbitrate(id, userId);
+        if (resp == null || resp.getCode() != 200) {
+            throw BusinessException.of(50001,
+                    resp != null && resp.getMsg() != null ? resp.getMsg() : "申请失败，请稍后重试");
         }
     }
 }

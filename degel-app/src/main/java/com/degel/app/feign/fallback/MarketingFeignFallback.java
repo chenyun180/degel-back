@@ -65,4 +65,11 @@ public class MarketingFeignFallback implements MarketingFeignClient {
         log.error("[MarketingFeignFallback] confirm orderId={} 降级", reqVO.getOrderId());
         return R.fail(50001, "confirm 降级");
     }
+
+    @Override
+    public R<Void> returnCoupon(java.util.Map<String, Long> req) {
+        // 退券是取消退款路径的补偿动作，服务端幂等——降级只 log，人工/重试可补
+        log.error("[MarketingFeignFallback] returnCoupon orderId={} 降级", req.get("orderId"));
+        return R.fail(50001, "returnCoupon 降级");
+    }
 }

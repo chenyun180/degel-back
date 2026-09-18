@@ -49,6 +49,8 @@ public class OrderServiceImpl implements OrderService {
     private final MallAddressMapper mallAddressMapper;
     private final RedissonClient redissonClient;
     private final com.degel.app.feign.PointsFeignClient pointsFeignClient;
+    /** 取消已付款订单时直接写退款流水（同进程，无需 Feign）；PayServiceImpl 无反向依赖，无循环 */
+    private final com.degel.app.service.PayService payService;
 
     // =========================================================
     // C-02: POST /app/order — 创建订单
@@ -775,6 +777,96 @@ public class OrderServiceImpl implements OrderService {
                 pointsFeignClient.unfreeze(orderInfoVO.getUserId(), orderInfoVO.getOrderNo());
             } catch (Exception ex) {
                 log.error("[cancelOrder] 积分回补失败（可人工补偿）orderNo={}", orderInfoVO.getOrderNo(), ex);
+            }
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    // =========================================================
+    // C-12: PUT /app/order/{orderId}/cancel-refund — 取消已付款订单并全额退款
+    // =========================================================
+
+    @Override
+    public void cancelPaidOrder(Long orderId, Long userId) {
+        // 查询并校验归属 + 状态：只有 status=1（已付款待发货）才能取消退款
+        OrderInfoVO orderInfoVO = fetchAndValidateOrder(orderId, userId);
+        if (!Integer.valueOf(1).equals(orderInfoVO.getStatus())) {
+            throw BusinessException.of(40017, "仅已付款待发货订单可取消退款");
+        }
+
+        // 与 status=0 取消共用锁（同为取消语义，天然互斥防并发重复取消）
+        String lockKey = "lock:order:cancel:" + orderId;
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(3, 10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw BusinessException.of(50001, "系统繁忙，请稍后重试");
+        }
+        if (!locked) {
+            throw BusinessException.of(50001, "操作频繁，请稍后重试");
+        }
+
+        try {
+            // 原子 CAS status=1→4（order 侧 WHERE status=1，与商家并发发货互斥）
+            R<OrderInfoVO> cancelResp = orderFeignClient.cancelPaidOrder(orderId);
+            if (cancelResp == null || cancelResp.getCode() != 200 || cancelResp.getData() == null) {
+                String msg = cancelResp != null && cancelResp.getMsg() != null
+                        ? cancelResp.getMsg() : "取消失败，请稍后重试";
+                throw BusinessException.of(40017, msg);
+            }
+            OrderInfoVO cancelled = cancelResp.getData();
+
+            // ---- 善后（逐项 best-effort：失败仅 log，不回滚取消；退款流水由 order 侧对账任务兜底补写）----
+
+            // 1. 恢复 DB 库存（秒杀单同样只回 DB——与超时取消同一防刷口径，Redis 余量不回）
+            if (cancelled.getItems() != null) {
+                for (OrderInfoVO.OrderItemInfoVO item : cancelled.getItems()) {
+                    try {
+                        stockFeignClient.restoreStock(new StockRestoreVO(item.getSkuId(), item.getQuantity()));
+                    } catch (Exception ex) {
+                        log.error("[cancelPaidOrder] 恢复库存失败 skuId={}", item.getSkuId(), ex);
+                    }
+                }
+            }
+
+            // 2. 退回已核销券（支付时券已 confirm，须按订单退回 status 2→4/5，幂等；unlock 的锁语义不适用）
+            if (cancelled.getCouponId() != null) {
+                try {
+                    java.util.Map<String, Long> req = new java.util.HashMap<>(1);
+                    req.put("orderId", orderId);
+                    marketingFeignClient.returnCoupon(req);
+                } catch (Exception ex) {
+                    log.error("[cancelPaidOrder] 退券失败（可人工补偿）orderId={}", orderId, ex);
+                }
+            }
+
+            // 3. 退回已抵扣积分（支付时冻结已落定 redeem，须 returnRedeem 全额退，幂等）
+            if (cancelled.getPointsUsed() != null && cancelled.getPointsUsed() > 0) {
+                try {
+                    pointsFeignClient.returnRedeem(cancelled.getUserId(), cancelled.getOrderNo());
+                } catch (Exception ex) {
+                    log.error("[cancelPaidOrder] 积分退回失败（可人工补偿）orderNo={}", cancelled.getOrderNo(), ex);
+                }
+            }
+
+            // 4. 全额退款流水（先查重防 Feign/入口重试重复插；金额=实付）
+            try {
+                if (!Boolean.TRUE.equals(payService.existsRefund(orderId))) {
+                    com.degel.app.vo.dto.InnerRefundReqVO refundVO = new com.degel.app.vo.dto.InnerRefundReqVO();
+                    refundVO.setUserId(cancelled.getUserId());
+                    refundVO.setOrderId(orderId);
+                    refundVO.setOrderNo(cancelled.getOrderNo());
+                    refundVO.setAmount(cancelled.getPayAmount());
+                    refundVO.setRemark("取消退款");
+                    payService.refund(refundVO);
+                }
+            } catch (Exception ex) {
+                log.error("[cancelPaidOrder] 退款流水写入失败（对账任务会补）orderId={}", orderId, ex);
             }
         } finally {
             if (lock.isHeldByCurrentThread()) {

@@ -11,6 +11,7 @@ import com.degel.order.entity.OrderInfo;
 import com.degel.order.mapper.OrderAfterSaleMapper;
 import com.degel.order.mapper.OrderInfoMapper;
 import com.degel.order.service.IOrderAfterSaleService;
+import com.degel.order.vo.AfterSaleArbitrateVo;
 import com.degel.order.vo.AfterSaleHandleVo;
 import com.degel.order.vo.AfterSaleInfoVo;
 import com.degel.order.vo.inner.AfterSaleCreateInnerVo;
@@ -39,6 +40,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
     private final com.degel.order.feign.PointsFeignClient pointsFeignClient;
     /** 结算域独立（settlement_* 表），无循环依赖；钩子 best-effort 见两处调用点 */
     private final com.degel.order.service.ISettlementService settlementService;
+    /** 站内信（best-effort，失败不阻断售后主流程） */
+    private final com.degel.order.service.NotificationService notificationService;
 
     @Override
     public IPage<OrderAfterSale> pageAfterSales(IPage<OrderAfterSale> page, Long shopId, Integer status, Integer type) {
@@ -107,6 +110,20 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
                 log.error("[handle] 结算退款联动失败（可兜底补偿）afterSaleId={} orderId={}",
                         afterSale.getId(), afterSale.getOrderId(), ex);
             }
+            notificationService.send(afterSale.getUserId(), "aftersale", "退款已到账",
+                    "售后单 " + afterSale.getId() + " 已同意，退款 ¥" + afterSale.getRefundAmount()
+                            + " 将原路退回，请注意查收");
+        }
+
+        // 售后审核结果通知（拒绝 / 退货退款同意）
+        if ("reject".equals(vo.getAction())) {
+            notificationService.send(afterSale.getUserId(), "aftersale", "售后申请被拒绝",
+                    "很抱歉，售后单 " + afterSale.getId() + " 被商家拒绝"
+                            + (vo.getMerchantRemark() != null ? "：" + vo.getMerchantRemark() : "")
+                            + "。如有异议可申请平台介入");
+        } else if ("agree".equals(vo.getAction()) && afterSale.getType() == 2) {
+            notificationService.send(afterSale.getUserId(), "aftersale", "退货申请已同意",
+                    "售后单 " + afterSale.getId() + " 已同意退货，请尽快寄回商品并填写物流单号");
         }
     }
 
@@ -139,6 +156,9 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             log.error("[confirmReceive] 结算退款联动失败（可兜底补偿）afterSaleId={} orderId={}",
                     afterSale.getId(), afterSale.getOrderId(), ex);
         }
+        notificationService.send(afterSale.getUserId(), "aftersale", "退货退款已到账",
+                "商家已确认收到退回商品，售后单 " + afterSaleId + " 退款 ¥"
+                        + afterSale.getRefundAmount() + " 将原路退回");
     }
 
     /**
@@ -227,8 +247,54 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             if (repaired > 0) {
                 log.info("[refund-reconcile] 本轮补写退款流水 {} 单", repaired);
             }
+            reconcileCancelledPaidRefunds(since);
         } catch (Exception ex) {
             log.error("[refund-reconcile] 对账任务异常", ex);
+        }
+    }
+
+    /**
+     * 取消退款对账：付过款又被取消的订单（status=4 且有 payTime）若无退款流水则补写——
+     * 兜住 cancelPaidOrder 善后 best-effort 失败的单（与售后对账同轮执行，同 LIMIT 节流）
+     */
+    private void reconcileCancelledPaidRefunds(java.time.LocalDateTime since) {
+        java.util.List<OrderInfo> cancelledPaid = orderInfoMapper.selectList(
+                new LambdaQueryWrapper<OrderInfo>()
+                        .eq(OrderInfo::getStatus, 4)
+                        .isNotNull(OrderInfo::getPayTime)
+                        .ge(OrderInfo::getCancelTime, since)
+                        .orderByAsc(OrderInfo::getId)
+                        .last("LIMIT 200"));
+        int repaired = 0;
+        for (OrderInfo order : cancelledPaid) {
+            try {
+                com.degel.common.core.R<Boolean> exists = payFeignClient.refundExists(order.getId());
+                if (exists != null && Boolean.TRUE.equals(exists.getData())) {
+                    continue;
+                }
+                // 复用退款流水写入（金额=实付全额，备注区分取消退款）
+                try {
+                    PayRefundInnerVo vo = new PayRefundInnerVo();
+                    vo.setUserId(order.getUserId());
+                    vo.setOrderId(order.getId());
+                    vo.setOrderNo(order.getOrderNo());
+                    vo.setAmount(order.getPayAmount());
+                    vo.setRemark("取消退款");
+                    payFeignClient.refund(vo);
+                    repaired++;
+                    log.warn("[refund-reconcile] 补写取消退款流水 orderId={} amount={}",
+                            order.getId(), order.getPayAmount());
+                } catch (Exception ex) {
+                    log.warn("[refund-reconcile] 取消退款补写失败，下轮重试 orderId={}: {}",
+                            order.getId(), ex.getMessage());
+                }
+            } catch (Exception ex) {
+                log.warn("[refund-reconcile] 取消退款查重失败，下轮重试 orderId={}: {}",
+                        order.getId(), ex.getMessage());
+            }
+        }
+        if (repaired > 0) {
+            log.info("[refund-reconcile] 本轮补写取消退款流水 {} 单", repaired);
         }
     }
 
@@ -320,8 +386,110 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         vo.setReason(afterSale.getReason());
         vo.setRefundAmount(afterSale.getRefundAmount());
         vo.setMerchantRemark(afterSale.getMerchantRemark());
+        vo.setPlatformRemark(afterSale.getPlatformRemark());
         vo.setCreateTime(afterSale.getCreateTime());
         vo.setUpdateTime(afterSale.getUpdateTime());
         return vo;
+    }
+
+    // ==================== 平台仲裁（PRD 6.3） ====================
+
+    @Override
+    public void applyArbitrateInner(Long afterSaleId, Long userId) {
+        OrderAfterSale afterSale = getById(afterSaleId);
+        if (afterSale == null) {
+            throw new BusinessException("售后单不存在");
+        }
+        if (!afterSale.getUserId().equals(userId)) {
+            throw new BusinessException("无权操作该售后单");
+        }
+        // CAS 5→6：仅"已拒绝"可申请介入（终态 3/7 不可再申请，防循环）
+        boolean ok = update(new LambdaUpdateWrapper<OrderAfterSale>()
+                .eq(OrderAfterSale::getId, afterSaleId)
+                .eq(OrderAfterSale::getStatus, 5)
+                .set(OrderAfterSale::getStatus, 6));
+        if (!ok) {
+            throw new BusinessException("当前状态无法申请平台介入");
+        }
+        log.info("[arbitrate] 用户申请平台介入 afterSaleId={} orderId={}", afterSaleId, afterSale.getOrderId());
+    }
+
+    @Override
+    public IPage<AfterSaleInfoVo> pageArbitrations(IPage<OrderAfterSale> page, Integer status) {
+        IPage<OrderAfterSale> raw = page(page, new LambdaQueryWrapper<OrderAfterSale>()
+                .eq(status != null, OrderAfterSale::getStatus, status)
+                .orderByAsc(OrderAfterSale::getUpdateTime));
+        // 平台视角：待仲裁(6)优先展示（调用方默认传 6），历史单据按需查
+        Map<Long, String> orderNoMap = raw.getRecords().isEmpty()
+                ? Collections.emptyMap()
+                : orderInfoMapper.selectList(new LambdaQueryWrapper<OrderInfo>()
+                        .in(OrderInfo::getId, raw.getRecords().stream()
+                                .map(OrderAfterSale::getOrderId).collect(Collectors.toList())))
+                .stream().collect(Collectors.toMap(OrderInfo::getId, OrderInfo::getOrderNo));
+        Page<AfterSaleInfoVo> result = new Page<>(raw.getCurrent(), raw.getSize(), raw.getTotal());
+        result.setRecords(raw.getRecords().stream()
+                .map(a -> toInnerVo(a, orderNoMap.get(a.getOrderId())))
+                .collect(Collectors.toList()));
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void arbitrate(AfterSaleArbitrateVo vo, String operator) {
+        OrderAfterSale afterSale = getById(vo.getAfterSaleId());
+        if (afterSale == null) {
+            throw new BusinessException("售后单不存在");
+        }
+        if (vo.getRemark() == null || vo.getRemark().trim().isEmpty()) {
+            throw new BusinessException("仲裁意见必填");
+        }
+        String remark = "[" + (vo.getSupportUser() ? "支持用户" : "维持拒绝") + "] " + operator + "：" + vo.getRemark();
+        if (Boolean.TRUE.equals(vo.getSupportUser())) {
+            // 支持用户：CAS 6→3，随后走与"商家同意退款"一致的完整退款链路
+            boolean ok = update(new LambdaUpdateWrapper<OrderAfterSale>()
+                    .eq(OrderAfterSale::getId, vo.getAfterSaleId())
+                    .eq(OrderAfterSale::getStatus, 6)
+                    .set(OrderAfterSale::getStatus, 3)
+                    .set(OrderAfterSale::getPlatformRemark, remark));
+            if (!ok) {
+                throw new BusinessException("该售后单已被处理");
+            }
+            // 退券（幂等 best-effort）
+            try {
+                java.util.Map<String, Long> req = new java.util.HashMap<>(1);
+                req.put("orderId", afterSale.getOrderId());
+                marketingFeignClient.returnCoupon(req);
+            } catch (Exception ex) {
+                log.error("[arbitrate] 仲裁退券失败（可人工补偿）afterSaleId={}", afterSale.getId(), ex);
+            }
+            // 退款流水 + 积分结算（均 best-effort，与 handle agree 同语义）
+            sendRefundLog(afterSale);
+            settlePointsOnRefund(afterSale);
+            // 结算联动：未结算作废 / 已结算扣回（幂等）
+            try {
+                settlementService.onRefundCompleted(afterSale);
+            } catch (Exception ex) {
+                log.error("[arbitrate] 结算联动失败（可兜底补偿）afterSaleId={}", afterSale.getId(), ex);
+            }
+            log.info("[arbitrate] 仲裁支持用户，退款完成 afterSaleId={} orderId={}",
+                    afterSale.getId(), afterSale.getOrderId());
+            notificationService.send(afterSale.getUserId(), "arbitrate", "平台仲裁：支持用户",
+                    "售后单 " + afterSale.getId() + " 平台判定支持用户，退款 ¥"
+                            + afterSale.getRefundAmount() + " 将原路退回。" + vo.getRemark());
+        } else {
+            // 维持拒绝：CAS 6→7（终态，不可再申请介入）
+            boolean ok = update(new LambdaUpdateWrapper<OrderAfterSale>()
+                    .eq(OrderAfterSale::getId, vo.getAfterSaleId())
+                    .eq(OrderAfterSale::getStatus, 6)
+                    .set(OrderAfterSale::getStatus, 7)
+                    .set(OrderAfterSale::getPlatformRemark, remark));
+            if (!ok) {
+                throw new BusinessException("该售后单已被处理");
+            }
+            log.info("[arbitrate] 仲裁维持拒绝 afterSaleId={} orderId={}",
+                    afterSale.getId(), afterSale.getOrderId());
+            notificationService.send(afterSale.getUserId(), "arbitrate", "平台仲裁：维持拒绝",
+                    "售后单 " + afterSale.getId() + " 平台判定维持商家拒绝。" + vo.getRemark());
+        }
     }
 }

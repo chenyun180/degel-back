@@ -46,4 +46,21 @@ public class OrderController {
         orderInfoService.deliver(vo, shopId);
         return R.ok();
     }
+
+    /**
+     * 配货单导出（CSV 带 BOM，Excel 可直接打开）。
+     * 前端 Ship 页的「导出配货单」按钮此前调用本端点但后端从未实现——点击必 404，2026-09-18 补齐。
+     * 默认导出待发货（status=1）；每订单每商品一行平铺，配货员按订单号归组。
+     */
+    @GetMapping(value = "/export", produces = "text/csv;charset=UTF-8")
+    public org.springframework.http.ResponseEntity<byte[]> export(
+            @RequestHeader("X-Shop-Id") Long shopId,
+            @RequestParam(defaultValue = "1") Integer status) throws java.io.UnsupportedEncodingException {
+        byte[] csv = orderInfoService.exportPickingList(shopId, status);
+        String fileName = java.net.URLEncoder.encode(
+                "配货单_" + java.time.LocalDate.now() + ".csv", java.nio.charset.StandardCharsets.UTF_8.name());
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename*=UTF-8''" + fileName)
+                .body(csv);
+    }
 }

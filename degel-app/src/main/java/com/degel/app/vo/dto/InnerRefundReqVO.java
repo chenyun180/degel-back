@@ -22,4 +22,7 @@ public class InnerRefundReqVO {
 
     @NotNull(message = "amount不能为空")
     private BigDecimal amount;
+
+    /** 流水备注（可选）：取消退款/售后退款等；缺省时 PayServiceImpl 用"售后退款" */
+    private String remark;
 }

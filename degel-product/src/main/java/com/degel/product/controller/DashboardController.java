@@ -34,4 +34,12 @@ public class DashboardController {
             @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
         return R.ok(dashboardService.getPendingCounts(shopId));
     }
+
+    /** 滞销预警：近 30 天零销量且库存>0，按占压金额倒序 TOP N（店铺维度；平台账号 shopId=0 为全站） */
+    @GetMapping("/unsalable")
+    public R<java.util.List<com.degel.product.vo.UnsalableVo>> unsalable(
+            @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId,
+            @RequestParam(defaultValue = "50") Integer limit) {
+        return R.ok(dashboardService.getUnsalable(shopId, limit));
+    }
 }

@@ -23,6 +23,8 @@ public class AfterSaleInfoVo {
     private String reason;
     private BigDecimal refundAmount;
     private String merchantRemark;
+    /** 平台仲裁意见（status=6/7 时有值） */
+    private String platformRemark;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

@@ -57,6 +57,13 @@ public class OrderFeignFallback implements OrderFeignClient {
     }
 
     @Override
+    public R<OrderInfoVO> cancelPaidOrder(Long orderId) {
+        // 取消已付款订单是用户主流程：降级直接报错，不能静默（未取消成功不得走善后）
+        log.error("[OrderFeignFallback] cancelPaidOrder 降级 orderId={}", orderId);
+        return R.fail(50001, "订单服务暂不可用，请稍后重试");
+    }
+
+    @Override
     public R<List<com.degel.app.vo.OrderInfoVO>> autoConfirmReceipts(Integer shipDays) {
         log.error("[OrderFeignFallback] autoConfirmReceipts 降级");
         return R.fail(50001, "订单服务暂不可用");
@@ -90,5 +97,35 @@ public class OrderFeignFallback implements OrderFeignClient {
     public R<AfterSaleInfoVO> getAfterSaleById(Long id) {
         log.error("[OrderFeignFallback] getAfterSaleById id={} 降级", id);
         return R.fail(50001, "订单服务暂不可用，请稍后重试");
+    }
+
+    @Override
+    public R<Void> applyArbitrate(Long id, Long userId) {
+        log.error("[OrderFeignFallback] applyArbitrate id={} 降级", id);
+        return R.fail(50001, "订单服务暂不可用，请稍后重试");
+    }
+
+    @Override
+    public R<Page<com.degel.app.vo.NotificationVO>> notificationPage(Long userId, Integer page, Integer pageSize) {
+        log.error("[OrderFeignFallback] notificationPage 降级 userId={}", userId);
+        return R.fail(50001, "消息服务暂不可用");
+    }
+
+    @Override
+    public R<Long> notificationUnreadCount(Long userId) {
+        log.error("[OrderFeignFallback] notificationUnreadCount 降级 userId={}", userId);
+        return R.ok(0L);
+    }
+
+    @Override
+    public R<Void> notificationRead(Long id, Long userId) {
+        log.error("[OrderFeignFallback] notificationRead 降级 id={}", id);
+        return R.fail(50001, "操作失败，请稍后重试");
+    }
+
+    @Override
+    public R<Void> notificationReadAll(Long userId) {
+        log.error("[OrderFeignFallback] notificationReadAll 降级 userId={}", userId);
+        return R.fail(50001, "操作失败，请稍后重试");
     }
 }

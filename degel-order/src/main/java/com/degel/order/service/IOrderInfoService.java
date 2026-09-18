@@ -20,6 +20,16 @@ public interface IOrderInfoService extends IService<OrderInfo> {
 
     void deliver(DeliverVo vo, Long shopId);
 
+    /**
+     * 配货单导出（CSV 带 BOM，Excel 可直接打开）：指定状态的订单+商品明细平铺，每商品一行
+     */
+    byte[] exportPickingList(Long shopId, Integer status);
+
+    /**
+     * 近 N 天各 SKU 销量聚合（product 滞销预警用；key=skuId 字符串化）
+     */
+    java.util.Map<String, Long> sumSkuSalesRecent(int days);
+
     // ==================== C 端内部接口（degel-app 经 Feign 调用） ====================
 
     /**
@@ -53,6 +63,13 @@ public interface IOrderInfoService extends IService<OrderInfo> {
      * UPDATE 带 status=0 条件，与并发支付天然互斥；返回实际取消成功的订单（含明细，供调用方恢复库存）
      */
     List<OrderInfoVo> cancelTimeoutOrders();
+
+    /**
+     * 取消已付款未发货订单（status=1，用户主动取消+全额退款场景）。
+     * 原子 UPDATE ... WHERE status=1：与商家并发发货（1→2）互斥，affected=0 即已流转抛业务异常。
+     * 返回含明细的 VO（供调用方恢复库存/退券/退积分/写退款流水）
+     */
+    OrderInfoVo cancelPaidOrder(Long orderId);
 
     /** 回写订单获得积分数（确认收货发分后由 app 调用；幂等 UPDATE） */
     void updatePointsEarned(String orderNo, int points);

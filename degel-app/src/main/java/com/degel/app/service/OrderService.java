@@ -49,6 +49,15 @@ public interface OrderService {
     void cancelOrder(Long orderId, Long userId);
 
     /**
+     * C-12: 取消已付款未发货订单并全额退款（status=1，原子 CAS 与并发发货互斥；
+     * 善后=库存回补/退券/退积分/退款流水，best-effort）
+     *
+     * @param orderId 订单ID
+     * @param userId  当前用户ID
+     */
+    void cancelPaidOrder(Long orderId, Long userId);
+
+    /**
      * 确认收货
      *
      * @param orderId 订单ID

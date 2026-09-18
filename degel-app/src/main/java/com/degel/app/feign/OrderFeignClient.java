@@ -71,6 +71,13 @@ public interface OrderFeignClient {
     R<List<OrderInfoVO>> cancelTimeoutOrders();
 
     /**
+     * 取消已付款未发货订单（用户取消+全额退款）：原子 CAS status=1→4，与并发发货互斥；
+     * 返回含明细 VO（供库存/券/积分/退款流水善后）
+     */
+    @PutMapping("/{orderId}/cancel-paid")
+    R<OrderInfoVO> cancelPaidOrder(@PathVariable("orderId") Long orderId);
+
+    /**
      * 批量自动确认收货（定时任务专用）：status=2 且发货超 shipDays 天 → 已完成，返回成功订单 id
      */
     /** 回写订单获得积分数（确认收货发分后；幂等） */
@@ -112,4 +119,27 @@ public interface OrderFeignClient {
      */
     @GetMapping("/aftersale/{id}")
     R<AfterSaleInfoVO> getAfterSaleById(@PathVariable("id") Long id);
+
+    /** 用户申请平台介入（仅已拒绝售后单，CAS 5→6） */
+    @PutMapping("/aftersale/{id}/arbitrate")
+    R<Void> applyArbitrate(@PathVariable("id") Long id, @RequestParam("userId") Long userId);
+
+    /** C 端站内信分页（未读在前） */
+    @GetMapping("/notification/page")
+    R<Page<com.degel.app.vo.NotificationVO>> notificationPage(
+            @RequestParam("userId") Long userId,
+            @RequestParam("page") Integer page,
+            @RequestParam("pageSize") Integer pageSize);
+
+    /** 未读数（用户中心红点） */
+    @GetMapping("/notification/unread-count")
+    R<Long> notificationUnreadCount(@RequestParam("userId") Long userId);
+
+    /** 标记已读 */
+    @PutMapping("/notification/{id}/read")
+    R<Void> notificationRead(@PathVariable("id") Long id, @RequestParam("userId") Long userId);
+
+    /** 全部已读 */
+    @PutMapping("/notification/read-all")
+    R<Void> notificationReadAll(@RequestParam("userId") Long userId);
 }

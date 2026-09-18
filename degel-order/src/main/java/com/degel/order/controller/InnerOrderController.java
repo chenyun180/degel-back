@@ -2,6 +2,7 @@ package com.degel.order.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.degel.common.core.R;
+import com.degel.order.entity.Notification;
 import com.degel.order.service.IOrderAfterSaleService;
 import com.degel.order.service.IOrderInfoService;
 import com.degel.order.vo.AfterSaleInfoVo;
@@ -31,6 +32,7 @@ public class InnerOrderController {
 
     private final IOrderInfoService orderInfoService;
     private final IOrderAfterSaleService orderAfterSaleService;
+    private final com.degel.order.service.NotificationService notificationService;
 
     /**
      * 创建订单（主表 + 明细快照，事务）
@@ -96,6 +98,15 @@ public class InnerOrderController {
     }
 
     /**
+     * 取消已付款未发货订单（用户主动取消+全额退款）：原子 CAS status=1→4，
+     * 与商家并发发货互斥；返回含明细 VO 供调用方善后（库存/券/积分/退款流水）
+     */
+    @PutMapping("/{orderId}/cancel-paid")
+    public R<OrderInfoVo> cancelPaidOrder(@PathVariable("orderId") Long orderId) {
+        return R.ok(orderInfoService.cancelPaidOrder(orderId));
+    }
+
+    /**
      * 批量自动确认收货（定时任务专用）：status=2 且发货超过 shipDays 天 → 已完成。
      * 返回实际收货成功的订单 id
      */
@@ -142,5 +153,51 @@ public class InnerOrderController {
     @GetMapping("/aftersale/{id}")
     public R<AfterSaleInfoVo> getAfterSaleById(@PathVariable("id") Long id) {
         return R.ok(orderAfterSaleService.getInnerAfterSale(id));
+    }
+
+    /**
+     * 用户申请平台介入（仅 status=5 已拒绝可申请，CAS 5→6）
+     */
+    @PutMapping("/aftersale/{id}/arbitrate")
+    public R<Void> applyArbitrate(@PathVariable("id") Long id, @RequestParam("userId") Long userId) {
+        orderAfterSaleService.applyArbitrateInner(id, userId);
+        return R.ok();
+    }
+
+    // ==================== C 端站内信（degel-app Feign 转发） ====================
+
+    /**
+     * 近 N 天各 SKU 销量聚合（已支付口径 status IN 1,2,3,5；product 滞销预警用）。
+     * 直接返回 Map（key=skuId 字符串化），与 Feign 消费端 R<Map<String,Long>> 对齐——勿再包 VO
+     */
+    @GetMapping("/stats/sku-sales")
+    public R<java.util.Map<String, Long>> skuSales(@RequestParam(defaultValue = "30") Integer days) {
+        return R.ok(orderInfoService.sumSkuSalesRecent(days));
+    }
+
+
+    @GetMapping("/notification/page")
+    public R<IPage<Notification>> notificationPage(
+            @RequestParam("userId") Long userId,
+            @RequestParam(value = "page", defaultValue = "1") Integer page,
+            @RequestParam(value = "pageSize", defaultValue = "10") Integer pageSize) {
+        return R.ok(notificationService.pageForUser(userId, page, pageSize));
+    }
+
+    @GetMapping("/notification/unread-count")
+    public R<Long> notificationUnreadCount(@RequestParam("userId") Long userId) {
+        return R.ok(notificationService.unreadCount(userId));
+    }
+
+    @PutMapping("/notification/{id}/read")
+    public R<Void> notificationRead(@PathVariable("id") Long id, @RequestParam("userId") Long userId) {
+        notificationService.markRead(id, userId);
+        return R.ok();
+    }
+
+    @PutMapping("/notification/read-all")
+    public R<Void> notificationReadAll(@RequestParam("userId") Long userId) {
+        notificationService.markAllRead(userId);
+        return R.ok();
     }
 }

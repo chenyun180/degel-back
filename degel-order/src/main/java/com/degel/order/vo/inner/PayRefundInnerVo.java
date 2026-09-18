@@ -23,4 +23,7 @@ public class PayRefundInnerVo {
 
     @NotNull(message = "amount不能为空")
     private BigDecimal amount;
+
+    /** 流水备注（可选）：取消退款/售后退款；缺省时 app 侧用"售后退款" */
+    private String remark;
 }

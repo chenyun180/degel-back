@@ -23,4 +23,6 @@ public class OrderAfterSale extends BaseEntity {
     private String expressCompany;
     private String expressNo;
     private String merchantRemark;
+    /** 平台仲裁意见（判定结果+操作人；status=6/7 时有值） */
+    private String platformRemark;
 }

@@ -37,6 +37,8 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
 
     private final IOrderItemService orderItemService;
     private final IOrderAfterSaleService orderAfterSaleService;
+    private final com.degel.order.service.NotificationService notificationService;
+    private final com.degel.order.mapper.OrderItemMapper orderItemMapper;
 
     @Override
     public IPage<OrderListVo> pageOrders(IPage<OrderInfo> page, Long shopId, Integer status, String orderNo) {
@@ -124,6 +126,85 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
                 .set(OrderInfo::getShipTime, LocalDateTime.now())
                 .set(OrderInfo::getExpressCompany, vo.getExpressCompany())
                 .set(OrderInfo::getExpressNo, vo.getExpressNo()));
+
+        // 站内信：发货通知（best-effort）
+        notificationService.send(order.getUserId(), "ship", "订单已发货",
+                "订单 " + order.getOrderNo() + " 已由 " + vo.getExpressCompany()
+                        + " 发出，运单号 " + vo.getExpressNo() + "，请注意查收");
+    }
+
+    @Override
+    public byte[] exportPickingList(Long shopId, Integer status) {
+        List<OrderInfo> orders = list(new LambdaQueryWrapper<OrderInfo>()
+                .eq(OrderInfo::getShopId, shopId)
+                .eq(status != null, OrderInfo::getStatus, status)
+                .orderByAsc(OrderInfo::getCreateTime));
+        StringBuilder sb = new StringBuilder();
+        // BOM：Excel 无 BOM 的 UTF-8 CSV 会中文乱码
+        sb.append('﻿');
+        sb.append("订单号,收货人,电话,收货地址,商品,规格,单价,数量,小计,实付,买家备注,下单时间\r\n");
+        if (!orders.isEmpty()) {
+            List<Long> orderIds = orders.stream().map(OrderInfo::getId).collect(Collectors.toList());
+            Map<Long, List<OrderItem>> itemMap = orderItemService.listByOrderIds(orderIds).stream()
+                    .collect(Collectors.groupingBy(OrderItem::getOrderId));
+            java.time.format.DateTimeFormatter fmt =
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            for (OrderInfo order : orders) {
+                List<OrderItem> items = itemMap.getOrDefault(order.getId(), Collections.emptyList());
+                if (items.isEmpty()) {
+                    sb.append(csv(order.getOrderNo())).append(',')
+                            .append(csv(order.getReceiverName())).append(',')
+                            .append(csv(order.getReceiverPhone())).append(',')
+                            .append(csv(order.getReceiverAddress())).append(',')
+                            .append(",,,,,,").append(csv(order.getPayAmount())).append(',')
+                            .append(csv(order.getRemark())).append(',')
+                            .append(order.getCreateTime() != null ? order.getCreateTime().format(fmt) : "")
+                            .append("\r\n");
+                    continue;
+                }
+                for (OrderItem item : items) {
+                    sb.append(csv(order.getOrderNo())).append(',')
+                            .append(csv(order.getReceiverName())).append(',')
+                            .append(csv(order.getReceiverPhone())).append(',')
+                            .append(csv(order.getReceiverAddress())).append(',')
+                            .append(csv(item.getSpuName())).append(',')
+                            .append(csv(item.getSkuSpec())).append(',')
+                            .append(item.getPrice() != null ? item.getPrice().toPlainString() : "").append(',')
+                            .append(item.getQuantity() != null ? item.getQuantity() : "").append(',')
+                            .append(item.getTotalAmount() != null ? item.getTotalAmount().toPlainString() : "").append(',')
+                            .append(csv(order.getPayAmount())).append(',')
+                            .append(csv(order.getRemark())).append(',')
+                            .append(order.getCreateTime() != null ? order.getCreateTime().format(fmt) : "")
+                            .append("\r\n");
+                }
+            }
+        }
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** CSV 字段转义：含逗号/引号/换行时用双引号包裹并转义内部引号 */
+    private String csv(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String s = String.valueOf(value);
+        if (s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
+            return '"' + s.replace("\"", "\"\"") + '"';
+        }
+        return s;
+    }
+
+    @Override
+    public java.util.Map<String, Long> sumSkuSalesRecent(int days) {
+        java.util.Map<String, Long> sales = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> row : orderItemMapper.sumSkuSalesRecent(days)) {
+            Object skuId = row.get("skuId");
+            Object cnt = row.get("cnt");
+            if (skuId != null && cnt != null) {
+                sales.put(String.valueOf(((Number) skuId).longValue()), ((Number) cnt).longValue());
+            }
+        }
+        return sales;
     }
 
     // ==================== C 端内部接口实现 ====================
@@ -334,6 +415,32 @@ public class OrderInfoServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo
         return cancelled.stream()
                 .map(order -> toInnerVo(order, itemMap.getOrDefault(order.getId(), Collections.emptyList())))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public OrderInfoVo cancelPaidOrder(Long orderId) {
+        // 原子 CAS：WHERE status=1 与商家并发发货（deliver 1→2）互斥，
+        // 0 行更新说明已发货/已取消/不存在——由调用方场景决定报错文案，这里统一拒绝
+        OrderInfo order = getById(orderId);
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        boolean ok = update(new LambdaUpdateWrapper<OrderInfo>()
+                .eq(OrderInfo::getId, orderId)
+                .eq(OrderInfo::getStatus, 1)
+                .set(OrderInfo::getStatus, 4)
+                .set(OrderInfo::getCancelTime, LocalDateTime.now())
+                .set(OrderInfo::getCancelReason, "用户取消(已付款)"));
+        if (!ok) {
+            throw new BusinessException("订单已发货或已取消，无法取消");
+        }
+        // CAS 后重读取最新状态组装 VO（含明细，供调用方做库存/券/积分/退款流水善后）
+        OrderInfo latest = getById(orderId);
+        List<OrderItem> items = orderItemService.listByOrderIds(
+                Collections.singletonList(orderId)).stream()
+                .filter(item -> item.getOrderId().equals(orderId))
+                .collect(Collectors.toList());
+        return toInnerVo(latest != null ? latest : order, items);
     }
 
     private OrderInfoVo toInnerVo(OrderInfo order, List<OrderItem> items) {
