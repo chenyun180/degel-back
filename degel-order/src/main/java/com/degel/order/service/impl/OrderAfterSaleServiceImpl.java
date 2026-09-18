@@ -103,6 +103,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             sendRefundLog(afterSale);
             // 积分结算：退回抵扣 + 回收已发（均幂等 best-effort，与退款流水同语义）
             settlePointsOnRefund(afterSale);
+            // 已发货（status=2）订单退款完成 → 关闭订单，封死自动收货发分/结算入口
+            closeShippedOrderOnRefund(afterSale);
             // 结算联动：未结算明细作废 / 已结算明细扣回余额（幂等 best-effort，失败由结算侧 30min 兜底对账补偿）
             try {
                 settlementService.onRefundCompleted(afterSale);
@@ -149,6 +151,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         sendRefundLog(afterSale);
         // 积分结算：退回抵扣 + 回收已发
         settlePointsOnRefund(afterSale);
+        // 防御性封口：退货型正常只有 status=3 订单可走，若未来放开到在途单同样要关闭
+        closeShippedOrderOnRefund(afterSale);
         // 结算联动（同 handle 语义：作废待入账 / 扣回已入账，幂等 best-effort）
         try {
             settlementService.onRefundCompleted(afterSale);
@@ -159,6 +163,24 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         notificationService.send(afterSale.getUserId(), "aftersale", "退货退款已到账",
                 "商家已确认收到退回商品，售后单 " + afterSaleId + " 退款 ¥"
                         + afterSale.getRefundAmount() + " 将原路退回");
+    }
+
+    /**
+     * 整单退款完成后，若订单仍停在已发货（status=2），CAS 置 4 封死后续流转：
+     * 自动收货任务（2→3 会发积分）/ 用户手动确认收货 / 结算候选扫描（扫 status=3）。
+     * CAS WHERE status=2 与并发收货互斥：谁先流转谁生效，不会双写。
+     * 注意：不回补库存——在途货物的归属（用户拒收退回/协商留下）无法自动判定，由商家线下处理。
+     */
+    private void closeShippedOrderOnRefund(OrderAfterSale afterSale) {
+        boolean closed = orderInfoMapper.update(null, new LambdaUpdateWrapper<OrderInfo>()
+                .eq(OrderInfo::getId, afterSale.getOrderId())
+                .eq(OrderInfo::getStatus, 2)
+                .set(OrderInfo::getStatus, 4)
+                .set(OrderInfo::getCancelTime, java.time.LocalDateTime.now())
+                .set(OrderInfo::getCancelReason, "售后退款完成")) > 0;
+        if (closed) {
+            log.info("[refund-close] 已发货订单退款完成，订单关闭 orderId={}", afterSale.getOrderId());
+        }
     }
 
     /**
@@ -303,19 +325,28 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
     @Override
     public Long createInnerAfterSale(AfterSaleCreateInnerVo vo) {
         // 售后窗口校验（法定七天无理由底线，平台可配 aftersale_days）：
-        // 仅 status=3 且确认收货在 N 天内的订单可申请。app 侧已查状态，这里做防御性复核 + 窗口判定，
+        // status=3 以确认收货时间起算 N 天；status=2（已发货未收货）以发货时间起算 N 天——
+        // 拼多多式"在途仅退款"，货权在途商家可审核把关（拒绝后用户仍可仲裁）。
+        // app 侧已查状态，这里做防御性复核 + 窗口判定，
         // 保证规则单点收敛在订单域（改配置即时生效，存量售后单不受影响）。
         OrderInfo order = orderInfoMapper.selectById(vo.getOrderId());
         if (order == null) {
             throw new BusinessException("订单不存在");
         }
-        if (!Integer.valueOf(3).equals(order.getStatus())) {
-            throw new BusinessException("仅已完成订单可申请售后");
-        }
         int windowDays = settlementService.readAftersaleDays();
-        if (order.getReceiveTime() == null
-                || order.getReceiveTime().isBefore(java.time.LocalDateTime.now().minusDays(windowDays))) {
-            throw new BusinessException("已超过" + windowDays + "天售后窗口，无法申请售后");
+        if (Integer.valueOf(2).equals(order.getStatus())) {
+            // 已发货未收货：仅退款型，基准 shipTime（防陈年滞留单）
+            if (order.getShipTime() == null
+                    || order.getShipTime().isBefore(java.time.LocalDateTime.now().minusDays(windowDays))) {
+                throw new BusinessException("已发货超过" + windowDays + "天，无法申请售后，请联系客服");
+            }
+        } else if (Integer.valueOf(3).equals(order.getStatus())) {
+            if (order.getReceiveTime() == null
+                    || order.getReceiveTime().isBefore(java.time.LocalDateTime.now().minusDays(windowDays))) {
+                throw new BusinessException("已超过" + windowDays + "天售后窗口，无法申请售后");
+            }
+        } else {
+            throw new BusinessException("仅已发货或已完成订单可申请售后");
         }
         OrderAfterSale afterSale = new OrderAfterSale();
         afterSale.setOrderId(vo.getOrderId());
@@ -465,6 +496,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             // 退款流水 + 积分结算（均 best-effort，与 handle agree 同语义）
             sendRefundLog(afterSale);
             settlePointsOnRefund(afterSale);
+            // 已发货（status=2）订单仲裁退款 → 关闭订单，封死自动收货发分/结算入口
+            closeShippedOrderOnRefund(afterSale);
             // 结算联动：未结算作废 / 已结算扣回（幂等）
             try {
                 settlementService.onRefundCompleted(afterSale);

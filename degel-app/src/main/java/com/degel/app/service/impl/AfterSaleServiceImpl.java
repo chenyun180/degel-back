@@ -46,9 +46,11 @@ public class AfterSaleServiceImpl implements AfterSaleService {
             throw BusinessException.of(40016, "无权操作该订单");
         }
 
-        // 2. 校验订单状态：必须是 status=3（已完成）才能申请售后
-        if (!Integer.valueOf(3).equals(orderInfo.getStatus())) {
-            throw BusinessException.of(40020, "仅已完成订单可申请售后");
+        // 2. 校验订单状态：status=2（已发货，在途仅退款）或 status=3（已完成，七天无理由）
+        //    窗口基准由订单域统一判定（2=发货起算 / 3=收货起算），这里只挡明显不可售后的状态
+        if (!Integer.valueOf(2).equals(orderInfo.getStatus())
+                && !Integer.valueOf(3).equals(orderInfo.getStatus())) {
+            throw BusinessException.of(40020, "仅已发货或已完成订单可申请售后");
         }
 
         // 3. 查重：已有 status IN(0,1) 的售后单则拒绝重复申请
