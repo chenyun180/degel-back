@@ -83,6 +83,8 @@ degel:
       - "*:/admin/role"
       - "*:/admin/menu"
       - "*:/admin/shop"
+      # 平台结算管理（提现审核/佣金配置）
+      - "*:/order/platform/settlement"
       - "PUT:/product/spu/audit"
       # ES 索引全量重建（平台管理动作）
       - "POST:/product/spu/reindex"

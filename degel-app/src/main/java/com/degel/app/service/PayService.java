@@ -42,4 +42,11 @@ public interface PayService {
      * 指定订单是否已有退款流水（degel-order 对账补偿用，判断 best-effort 写入是否失败）
      */
     boolean existsRefund(Long orderId);
+
+    /**
+     * 平台资金汇总：累计支付/退款总额（degel-order 平台资金总览用）
+     *
+     * @return [0]=累计支付总额 [1]=累计退款总额
+     */
+    java.math.BigDecimal[] sumPayAndRefund();
 }

@@ -25,4 +25,8 @@ public interface PayFeignClient {
     /** 订单是否已有退款流水（对账补偿判断用） */
     @GetMapping("/refund/exists")
     R<Boolean> refundExists(@RequestParam("orderId") Long orderId);
+
+    /** 平台资金汇总：data = [累计支付总额, 累计退款总额]（平台资金总览用） */
+    @GetMapping("/summary")
+    R<java.math.BigDecimal[]> summary();
 }

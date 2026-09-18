@@ -46,4 +46,14 @@ public class InnerPayController {
     public R<Boolean> refundExists(@RequestParam Long orderId) {
         return R.ok(payService.existsRefund(orderId));
     }
+
+    /**
+     * 平台资金汇总（degel-order 平台资金总览用）
+     *
+     * @return data = [累计支付总额, 累计退款总额]
+     */
+    @GetMapping("/summary")
+    public R<java.math.BigDecimal[]> summary() {
+        return R.ok(payService.sumPayAndRefund());
+    }
 }

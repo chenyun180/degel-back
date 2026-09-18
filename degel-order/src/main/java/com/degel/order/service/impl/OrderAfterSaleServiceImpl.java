@@ -37,6 +37,8 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
     private final com.degel.order.feign.MarketingFeignClient marketingFeignClient;
     private final PayFeignClient payFeignClient;
     private final com.degel.order.feign.PointsFeignClient pointsFeignClient;
+    /** 结算域独立（settlement_* 表），无循环依赖；钩子 best-effort 见两处调用点 */
+    private final com.degel.order.service.ISettlementService settlementService;
 
     @Override
     public IPage<OrderAfterSale> pageAfterSales(IPage<OrderAfterSale> page, Long shopId, Integer status, Integer type) {
@@ -98,6 +100,13 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
             sendRefundLog(afterSale);
             // 积分结算：退回抵扣 + 回收已发（均幂等 best-effort，与退款流水同语义）
             settlePointsOnRefund(afterSale);
+            // 结算联动：未结算明细作废 / 已结算明细扣回余额（幂等 best-effort，失败由结算侧 30min 兜底对账补偿）
+            try {
+                settlementService.onRefundCompleted(afterSale);
+            } catch (Exception ex) {
+                log.error("[handle] 结算退款联动失败（可兜底补偿）afterSaleId={} orderId={}",
+                        afterSale.getId(), afterSale.getOrderId(), ex);
+            }
         }
     }
 
@@ -123,6 +132,13 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
         sendRefundLog(afterSale);
         // 积分结算：退回抵扣 + 回收已发
         settlePointsOnRefund(afterSale);
+        // 结算联动（同 handle 语义：作废待入账 / 扣回已入账，幂等 best-effort）
+        try {
+            settlementService.onRefundCompleted(afterSale);
+        } catch (Exception ex) {
+            log.error("[confirmReceive] 结算退款联动失败（可兜底补偿）afterSaleId={} orderId={}",
+                    afterSale.getId(), afterSale.getOrderId(), ex);
+        }
     }
 
     /**
@@ -220,6 +236,21 @@ public class OrderAfterSaleServiceImpl extends ServiceImpl<OrderAfterSaleMapper,
 
     @Override
     public Long createInnerAfterSale(AfterSaleCreateInnerVo vo) {
+        // 售后窗口校验（法定七天无理由底线，平台可配 aftersale_days）：
+        // 仅 status=3 且确认收货在 N 天内的订单可申请。app 侧已查状态，这里做防御性复核 + 窗口判定，
+        // 保证规则单点收敛在订单域（改配置即时生效，存量售后单不受影响）。
+        OrderInfo order = orderInfoMapper.selectById(vo.getOrderId());
+        if (order == null) {
+            throw new BusinessException("订单不存在");
+        }
+        if (!Integer.valueOf(3).equals(order.getStatus())) {
+            throw new BusinessException("仅已完成订单可申请售后");
+        }
+        int windowDays = settlementService.readAftersaleDays();
+        if (order.getReceiveTime() == null
+                || order.getReceiveTime().isBefore(java.time.LocalDateTime.now().minusDays(windowDays))) {
+            throw new BusinessException("已超过" + windowDays + "天售后窗口，无法申请售后");
+        }
         OrderAfterSale afterSale = new OrderAfterSale();
         afterSale.setOrderId(vo.getOrderId());
         afterSale.setUserId(vo.getUserId());

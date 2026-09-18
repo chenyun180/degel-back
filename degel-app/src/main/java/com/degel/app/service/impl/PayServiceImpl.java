@@ -210,4 +210,12 @@ public class PayServiceImpl implements PayService {
                         .eq(MallPaymentLog::getDirection, "refund"))
                 > 0;
     }
+
+    @Override
+    public java.math.BigDecimal[] sumPayAndRefund() {
+        return new java.math.BigDecimal[]{
+                mallPaymentLogMapper.sumTotalPay(),
+                mallPaymentLogMapper.sumTotalRefund()
+        };
+    }
 }

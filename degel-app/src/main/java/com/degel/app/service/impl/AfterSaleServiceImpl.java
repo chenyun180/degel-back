@@ -73,7 +73,9 @@ public class AfterSaleServiceImpl implements AfterSaleService {
 
         R<Long> createResp = orderFeignClient.createAfterSale(innerReq);
         if (createResp == null || createResp.getCode() != 200 || createResp.getData() == null) {
-            throw BusinessException.of(50001, "申请售后失败，请稍后重试");
+            // 透传订单域的业务拒绝原因（如"已超过7天售后窗口"），仅真异常才兜底通用文案
+            throw BusinessException.of(50001,
+                    createResp != null && createResp.getMsg() != null ? createResp.getMsg() : "申请售后失败，请稍后重试");
         }
         return createResp.getData();
     }
