@@ -114,6 +114,12 @@ public class ProductServiceImpl implements ProductService {
         if (Integer.valueOf(1).equals(page) && !CollectionUtils.isEmpty(converted.getRecords())) {
             recordHotKeyword(keyword);
         }
+        // 搜索埋点（product_search_log，搜索词分析数据源）：第一页就记、空结果也记
+        //（resultCount=0 是"搜了没货"的缺口信号）；纯分类浏览（无 keyword）不记。
+        // 与热搜词口径刻意不同：热榜只要成功搜索，日志要全量事件
+        if (Integer.valueOf(1).equals(page) && keyword != null && !keyword.trim().isEmpty()) {
+            recordSearchLog(keyword, converted.getTotal());
+        }
         return converted;
     }
 
@@ -167,6 +173,29 @@ public class ProductServiceImpl implements ProductService {
                 redisTemplate.expire(CACHE_SEARCH_HOT, HOT_TTL_DAYS, TimeUnit.DAYS);
             } catch (Exception e) {
                 log.warn("[ProductServiceImpl] 热搜词记录失败，word={}", word, e);
+            }
+        });
+    }
+
+    /**
+     * 搜索埋点落库（product_search_log，搜索词分析数据源）：异步 + 吞异常（埋点丢一条无所谓，
+     * 搜索主链路不能被拖累）。userId 必须在异步前取——UserContext 是 ThreadLocal，不跨线程。
+     */
+    private void recordSearchLog(String keyword, long resultCount) {
+        final String word = cleanKeyword(keyword);
+        if (word == null) {
+            return;
+        }
+        final Long userId = UserContext.getUserId();
+        CompletableFuture.runAsync(() -> {
+            try {
+                java.util.Map<String, Object> body = new java.util.HashMap<>(3);
+                body.put("keyword", word);
+                body.put("userId", userId);
+                body.put("resultCount", resultCount);
+                productFeignClient.recordSearchLog(body);
+            } catch (Exception e) {
+                log.debug("[ProductServiceImpl] 搜索埋点失败（best-effort 忽略），word={}", word, e);
             }
         });
     }

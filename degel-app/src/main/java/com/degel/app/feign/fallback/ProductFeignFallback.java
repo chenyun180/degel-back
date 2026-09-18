@@ -68,4 +68,11 @@ public class ProductFeignFallback implements ProductFeignClient {
         log.error("[ProductFeignFallback] getSuggest 降级，keyword={}", keyword);
         return R.fail(50001, "搜索联想服务暂不可用");
     }
+
+    @Override
+    public R<Void> recordSearchLog(java.util.Map<String, Object> body) {
+        // 埋点是 best-effort 增强功能：降级只记 debug 不刷屏（搜索高峰期 product 抖动时每次搜索都会走这里）
+        log.debug("[ProductFeignFallback] recordSearchLog 降级，body={}", body);
+        return R.fail(50001, "商品服务暂不可用");
+    }
 }

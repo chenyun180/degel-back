@@ -66,6 +66,12 @@ public interface ProductFeignClient {
     R<ProductSpuVO> getSpuDetail(@PathVariable("spuId") Long spuId);
 
     /**
+     * 搜索埋点落库（product_search_log，搜索词分析数据源；best-effort，失败即丢不影响搜索）
+     */
+    @PostMapping("/inner/spu/search-log")
+    R<Void> recordSearchLog(@RequestBody java.util.Map<String, Object> body);
+
+    /**
      * 获取 SKU 列表
      */
     @GetMapping("/sku/list")
