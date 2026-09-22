@@ -15,8 +15,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_product?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: ${DB_PASSWORD:123456}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
   # C 端商品搜索 ES 集群（192.168.1.14 三节点，IK 分词）。多 uri 由 RestClient 轮询 + 故障转移。
   # 超时预算：ES 全停时 RestClient 逐节点尝试（1s 连接 ×3 + 2s 读）最坏约 4s 必须降级完成，
   # 否则超过 degel-app Feign read-timeout(5s)，C 端会拿到超时错误而非 MySQL 兜底结果
@@ -41,4 +41,5 @@ mybatis-plus:
 degel:
   inner:
     # 与 degel-app/degel-order FeignConfig 发送的 X-Inner-Token 一致（inner 接口鉴权）
-    token: ${INNER_TOKEN:degel-inner-service-token-2024}
+    # 严格模式，无默认值——未配置环境变量 INNER_TOKEN 直接启动失败（H1/H3 修复）
+    token: ${INNER_TOKEN}

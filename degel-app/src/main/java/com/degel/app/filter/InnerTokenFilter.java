@@ -13,6 +13,8 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 /**
  * 内部服务调用鉴权过滤器
@@ -48,8 +50,10 @@ public class InnerTokenFilter extends OncePerRequestFilter {
         // 只拦截内部路径
         if (uri.startsWith(INNER_PATH_PREFIX)) {
             String tokenHeader = request.getHeader(INNER_TOKEN_HEADER);
-            if (!StringUtils.hasText(tokenHeader) || !tokenHeader.equals(innerToken)) {
-                log.warn("[InnerTokenFilter] 内部接口非法访问 uri={} token={}", uri, tokenHeader);
+            if (!StringUtils.hasText(tokenHeader)
+                    || !MessageDigest.isEqual(tokenHeader.getBytes(StandardCharsets.UTF_8),
+                            innerToken.getBytes(StandardCharsets.UTF_8))) {
+                log.warn("[InnerTokenFilter] 内部接口非法访问 uri={} remote={}", uri, request.getRemoteAddr());
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write("{\"code\":403,\"msg\":\"内部服务鉴权失败\",\"data\":null}");

@@ -42,8 +42,11 @@ public class Constants {
      */
     public static final String AUTH_TOKEN_VERSION_PREFIX = "auth:tokenver:";
 
-    /** 用户默认密码 */
-    public static final String DEFAULT_PASSWORD = "admin123";
+    /**
+     * 用户默认密码 —— 已删除（2026-09-20 安全扫描 H2 修复）。
+     * 原值 admin123 固定用于初始超管/重置密码/新店铺 owner，构成"重置即可登任意账号"的
+     * 完整攻击链。现在一律用 {@link com.degel.common.utils.PasswordGenerator} 生成随机一次性密码。
+     */
 
     /** 审核状态 - 草稿 */
     public static final int AUDIT_DRAFT = 0;

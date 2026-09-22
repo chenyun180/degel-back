@@ -15,22 +15,29 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_admin?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: ${DB_PASSWORD:123456}
+    # M3/M4 修复：凭据严格模式，无默认值——未配置环境变量直接启动失败，开发值由 degel.sh 导出
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
   redis:
     host: 192.168.1.14
     port: 6379
-    password: ${REDIS_PASSWORD:root12345}
+    password: ${REDIS_PASSWORD}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.degel.admin.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # log-impl: StdOutImpl 已移除（2026-09-20 扫描低危项：全量 SQL 含手机号/地址打 stdout）
   global-config:
     db-config:
       id-type: auto
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+degel:
+  inner:
+    # M2 修复配套：InnerTokenFilter 校验 /user/find/** 与 /inner/** 的 X-Inner-Token
+    # 严格模式，无默认值——未配置环境变量 INNER_TOKEN 直接启动失败（auth 的 FeignConfig 出站同值）
+    token: ${INNER_TOKEN}

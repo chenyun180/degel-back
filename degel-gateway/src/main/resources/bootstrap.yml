@@ -11,6 +11,11 @@ spring:
         # 固定注册地址：本机 IP 变化后旧注册 IP 失效，服务间 Feign 调用会 502；本机集群统一走 127.0.0.1
         ip: 127.0.0.1
     gateway:
+      # XFF 追加显式化（低危修复配套）：网关把真实 remoteAddr 追加到 X-Forwarded-For 尾部，
+      # auth/app 的限流器据此取"最后一段"为真实 IP——攻击者只能前插伪造段绕不过
+      x-forwarded:
+        enabled: true
+        for-append: true
       routes:
         - id: auth-route
           uri: lb://degel-auth
@@ -54,14 +59,19 @@ spring:
   redis:
     host: 192.168.1.14
     port: 6379
-    password: ${REDIS_PASSWORD:root12345}
+    password: ${REDIS_PASSWORD}
 
 degel:
+  # CORS 白名单（低危修复后为真实属性，单一来源）：开发默认含局域网通配（真机/局域网浏览器
+  # 访问 dev server 的常见形态）；prod profile 下含通配符会被 SecurityStartupCheck 拒绝启动，
+  # 生产必须用 DEGEL_CORS_ORIGINS 注入真实域名
+  cors:
+    origins: ${DEGEL_CORS_ORIGINS:http://localhost:8000,http://localhost:10087,http://127.0.0.1:8000,http://127.0.0.1:10087,http://192.168.1.*:8000,http://192.168.1.*:10087}
   security:
-    # 管理端 JWT 密钥：生产必须用环境变量 JWT_SECRET 覆盖默认值（与 degel-auth 保持一致）
-    jwt-secret: ${JWT_SECRET:degel-jwt-secret-key-2024-platform-admin}
-    # C 端 JWT 密钥：与 degel-app 的 APP_JWT_SECRET 一致（网关统一校验 c_end 令牌用）
-    app-jwt-secret: ${APP_JWT_SECRET:degel-c-end-secret-key-2024-change-in-prod}
+    # 管理端 JWT 密钥：严格模式，无默认值——未配置环境变量 JWT_SECRET 直接启动失败（H3 修复）
+    jwt-secret: ${JWT_SECRET}
+    # C 端 JWT 密钥：与 degel-app 的 APP_JWT_SECRET 一致（网关统一校验 c_end 令牌用），同样严格模式
+    app-jwt-secret: ${APP_JWT_SECRET}
     ignore-urls:
       - /auth/oauth/token
       - /app/
@@ -71,6 +81,9 @@ degel:
     internal-urls:
       - /admin/user/find/
       - /inner/
+      # degel-app 内部接口经网关路由后的路径（H1 修复：此前漏配，/app/inner/** 可经网关公网端口
+      # 触达，仅靠仓库内默认 INNER_TOKEN 保护，可伪造任意订单退款）
+      - /app/inner/
       # degel-product 内部接口经网关路由后的路径（Feign 直连不走网关，不受影响）
       - /product/inner/
       # degel-order 内部接口经网关路由后的路径
@@ -99,6 +112,12 @@ degel:
       - "DELETE:/product/category"
       # 平台工作台数据看板（前缀恰好覆盖 /overview 与 /trend，勿放宽为 /order/platform）
       - "GET:/order/platform/dashboard"
+      # 文件管理接口仅平台管理员（2026-09-22 M1 修复：list/presign/delete 此前任意店铺
+      # token 可调用且服务端无归属校验，可枚举/预签/删除任意桶含私有桶对象。全库前端只用
+      # upload 与 view，故直接收进平台权限；DELETE:/file 前缀匹配不影响 GET view）
+      - "GET:/file/list"
+      - "GET:/file/presign"
+      - "DELETE:/file"
     # admin-url-excludes 为 admin-urls 的例外（登录用户自服务接口），优先级高于 admin-urls
     admin-url-excludes:
       - "GET:/admin/user/info"

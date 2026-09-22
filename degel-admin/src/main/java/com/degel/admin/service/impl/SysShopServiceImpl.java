@@ -14,6 +14,7 @@ import com.degel.admin.service.ISysShopService;
 import com.degel.admin.service.ISysUserService;
 import com.degel.common.core.Constants;
 import com.degel.common.core.exception.BusinessException;
+import com.degel.common.utils.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -69,7 +70,8 @@ public class SysShopServiceImpl extends ServiceImpl<SysShopMapper, SysShop> impl
             throw new BusinessException("用户名 " + username + " 已存在，请更换联系电话");
         }
 
-        String rawPassword = Constants.DEFAULT_PASSWORD;
+        // H2 修复：店铺 owner 初始密码改为随机一次性密码（响应体一次性返回给创建者）
+        String rawPassword = PasswordGenerator.generate();
 
         SysUser owner = new SysUser();
         owner.setUsername(username);

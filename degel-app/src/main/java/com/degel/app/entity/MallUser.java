@@ -2,6 +2,7 @@ package com.degel.app.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.degel.common.core.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -14,7 +15,8 @@ import lombok.EqualsAndHashCode;
 @TableName("mall_user")
 public class MallUser extends BaseEntity {
 
-    /** 微信 openid，H5 用户为空 */
+    /** 微信 openid，H5 用户为空。序列化层兜底（低危修复）：只进不出，防未来实体直出泄漏 */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String openid;
 
     /** 昵称 */
@@ -26,7 +28,8 @@ public class MallUser extends BaseEntity {
     /** 手机号，微信用户可为空 */
     private String phone;
 
-    /** 密码（BCrypt 存储），微信用户为空 */
+    /** 密码（BCrypt 存储），微信用户为空。序列化层兜底：只进不出 */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /**

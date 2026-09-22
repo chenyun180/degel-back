@@ -15,8 +15,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_order?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: ${DB_PASSWORD:123456}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
@@ -31,4 +31,5 @@ mybatis-plus:
 degel:
   inner:
     # 出站给 degel-marketing 的 X-Inner-Token（与 marketing 校验值一致）
-    token: ${INNER_TOKEN:degel-inner-service-token-2024}
+    # 严格模式，无默认值——未配置环境变量 INNER_TOKEN 直接启动失败（H1/H3 修复）
+    token: ${INNER_TOKEN}

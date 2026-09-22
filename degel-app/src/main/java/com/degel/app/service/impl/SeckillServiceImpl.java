@@ -1,5 +1,7 @@
 package com.degel.app.service.impl;
 
+import com.degel.common.utils.LogMask;
+
 import com.degel.app.entity.MallAddress;
 import com.degel.app.exception.BusinessException;
 import com.degel.app.feign.OrderFeignClient;
@@ -519,7 +521,7 @@ public class SeckillServiceImpl implements SeckillService {
             rollbackSeckillPoints(userId, seckillOrderNo, seckillPointsUsed);
             throw e;
         } catch (Exception e) {
-            log.error("[SeckillServiceImpl] 秒杀下单异常 token={}", token, e);
+            log.error("[SeckillServiceImpl] 秒杀下单异常 token={}", LogMask.mask(token), e);
             compensateCreateOrder(stockDeducted, skuId, sessionId, userId);
             rollbackSeckillPoints(userId, seckillOrderNo, seckillPointsUsed);
             throw BusinessException.of(50001, "创建订单失败，请稍后重试");
@@ -627,7 +629,7 @@ public class SeckillServiceImpl implements SeckillService {
             throw e;
         } catch (Exception e) {
             // 放弃资格是 best-effort：失败吞掉（hold 90s 后自动过期，清理任务兜底回滚）
-            log.warn("[SeckillServiceImpl] 取消资格失败 token={} userId={}", token, userId, e);
+            log.warn("[SeckillServiceImpl] 取消资格失败 token={} userId={}", LogMask.mask(token), userId, e);
         }
     }
 

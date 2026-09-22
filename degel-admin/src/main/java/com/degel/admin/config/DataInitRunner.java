@@ -9,8 +9,10 @@ import com.degel.admin.service.ISysMenuService;
 import com.degel.admin.service.ISysRoleService;
 import com.degel.admin.service.ISysUserService;
 import com.degel.common.core.Constants;
+import com.degel.common.utils.PasswordGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -31,6 +33,14 @@ public class DataInitRunner implements ApplicationRunner {
     private final SysUserRoleMapper userRoleMapper;
     private final SysRoleMenuMapper roleMenuMapper;
     private final PasswordEncoder passwordEncoder;
+
+    /**
+     * 空库初始化时超管 admin 的密码（H2 修复）。
+     * 默认留空 → 用随机密码并在日志打印一次；本地开发由 degel.sh 导出
+     * DEGEL_INIT_ADMIN_PASSWORD 注入，生产必须注入强值并首次登录后立即修改。
+     */
+    @Value("${DEGEL_INIT_ADMIN_PASSWORD:}")
+    private String initAdminPassword;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -216,15 +226,22 @@ public class DataInitRunner implements ApplicationRunner {
             roleMenuMapper.insertBatch(shopRole.getId(), shopMenuIds);
         }
 
-        // 超级管理员账号
+        // 超级管理员账号（H2 修复：admin123 固定口令已废除，未配置 DEGEL_INIT_ADMIN_PASSWORD 时用随机密码）
+        String initPassword = org.springframework.util.StringUtils.hasText(initAdminPassword)
+                ? initAdminPassword : PasswordGenerator.generate();
         SysUser admin = new SysUser();
         admin.setUsername("admin");
-        admin.setPassword(passwordEncoder.encode("admin123"));
+        admin.setPassword(passwordEncoder.encode(initPassword));
         admin.setNickname("超级管理员");
         admin.setStatus(0);
         admin.setShopId(0L);
         userService.save(admin);
         userRoleMapper.insertBatch(admin.getId(), Arrays.asList(adminRole.getId()));
+        if (!org.springframework.util.StringUtils.hasText(initAdminPassword)) {
+            log.warn("========== 初始超管账号 ==========");
+            log.warn("admin / {}（随机生成，仅此打印一次，请立即登录修改）", initPassword);
+            log.warn("==================================");
+        }
     }
 
     // ==================== 工具方法 ====================

@@ -123,12 +123,17 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         response.getWriter().flush();
     }
 
-    /** 客户端真实 IP：网关转发取 X-Forwarded-For 首段，直连取 remoteAddr（与 C 端 RedisRateLimiter 一致） */
+    /**
+     * 客户端真实 IP：取 X-Forwarded-For **最后一段**（低危修复：原取首段可被伪造绕过 IP 限流）。
+     * 网关（Spring Cloud Gateway，x-forwarded.for-append 默认开启且已在 yml 显式化）会在
+     * XFF 尾部追加它看到的真实 remoteAddr——攻击者只能往前插伪造段，删不掉尾部的真实值。
+     * 直连（无 XFF）取 remoteAddr。与 C 端 RedisRateLimiter 保持一致。
+     */
     private static String clientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         if (StringUtils.hasText(xff)) {
-            int comma = xff.indexOf(',');
-            String ip = (comma > 0 ? xff.substring(0, comma) : xff).trim();
+            int comma = xff.lastIndexOf(',');
+            String ip = (comma >= 0 ? xff.substring(comma + 1) : xff).trim();
             if (!ip.isEmpty()) {
                 return ip;
             }

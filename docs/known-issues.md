@@ -7,6 +7,26 @@
 > 2026-09-15 批量加固：原安全类 5 项已全部处理（详见下方 2026-09-15 节）。生产部署仍需做的事：
 > 所有 `${ENV:默认值}` 占位的密钥/凭据（JWT_SECRET、INNER_TOKEN、OAUTH_CLIENT_*、DB/REDIS/MINIO 密码、DEGEL_CORS_ORIGINS）
 > **生产必须显式注入强值**——默认值只为本地开发保留（degel.sh 不带 env 启动依赖它们）。
+>
+> 2026-09-22 更新：上述占位符已全部去默认值改严格模式（未配置 env 直接启动失败），开发值集中在
+> 工作区根目录 degel.sh 导出（根目录非 Git 仓库）。高危 5 项 + 中危 8 项修复详见 2026-09-22 节。
+
+### 生产上线前必须完成的运维项（代码无法替代）
+
+- **高德地图域名白名单**：degel-taro 的高德 Key/securityJsCode 经 defineConstants 内联进前端产物，
+  H5 构建后对所有人可见（AMapPicker 渲染真实地图，JS API key 架构上必须在客户端，后端代理不可行）。
+  代码侧已确保密钥不入库（.env.local 已 gitignore）、缺失时启动即报错；**唯一有效防线是在高德开放平台
+  控制台给该 Key 配置域名白名单**，上线前必须配置，否则密钥可被任意站点盗用消耗额度/触发计费。
+- **生产环境变量注入**：JWT_SECRET / APP_JWT_SECRET / OAUTH_CLIENT_SECRET / INNER_TOKEN /
+  DB_USERNAME / DB_PASSWORD / REDIS_PASSWORD / MINIO_ACCESS_KEY / MINIO_SECRET_KEY /
+  DEGEL_INIT_ADMIN_PASSWORD（空库初始化超管用）/ DEGEL_CORS_ORIGINS，全部注入强值。
+- **taro 生产构建**：必须设置 `TARO_APP_API_BASE`（https 域名），缺失或 http 时构建直接失败（M8 修复）。
+
+### 已评估保留项（2026-09-22 低危轮决策记录，非疏漏）
+
+- **管理端 token 存 localStorage（taro 同理 storage）**：当前无 XSS sink、登出闭环有效，风险为"未来引入 XSS 时的放大器"。迁 HttpOnly cookie 需网关统一种 cookie + CORS 改 credentials + 前端全量请求改造，影响面大，单独立项再做；在此之前任何新代码**禁止**引入 `dangerouslySetInnerHTML`/`innerHTML`。
+- **重置密码/开店接口在响应体返回明文密码**：密码已是 SecureRandom 随机一次性密码（H2 修复后），必须回传给操作者，接口本身在平台管理员权限内，属可接受设计。
+- **C 端 JWT 默认 7 天**：缩短有效期属产品决策（强制用户频繁重登），已有 jti 黑名单 + 登出 + token_version 兜底；已改为 `APP_JWT_EXPIRATION` 环境变量可配，生产按需收紧。
 
 ## 2026-09-15 管理端登录/登出闭环加固（SSO 审查修复）
 

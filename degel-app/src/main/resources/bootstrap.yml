@@ -16,11 +16,11 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://192.168.1.14:3306/degel_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:123456}
+    password: ${DB_PASSWORD}
   redis:
     host: 192.168.1.14
     port: 6379
-    password: ${REDIS_PASSWORD:root12345}
+    password: ${REDIS_PASSWORD}
     database: 1   # C端独立 DB，与 admin 端隔离
   security:
     ignored: "/**"   # 关闭 Spring Security 默认拦截，由 AppSecurityFilter 接管
@@ -38,12 +38,16 @@ mybatis-plus:
 degel:
   app:
     jwt:
-      secret: ${APP_JWT_SECRET:degel-c-end-secret-key-2024-change-in-prod}
-      expiration: 604800   # 7天，单位秒
+      # 严格模式，无默认值——未配置环境变量 APP_JWT_SECRET 直接启动失败（H3 修复，与网关一致）
+      secret: ${APP_JWT_SECRET}
+      # 有效期可配（低危修复）：默认保持 7 天——缩短属产品决策（强制用户频繁重登），
+      # 有 jti 黑名单 + 登出机制兜底被动泄露场景；生产如需收紧注入 APP_JWT_EXPIRATION
+      expiration: ${APP_JWT_EXPIRATION:604800}
     # 文件访问基地址（C 端拼图片绝对 URL 用；生产改为公网网关/CDN 域名）
     file-base-url: ${FILE_BASE_URL:http://localhost:9999}
   inner:
-    token: ${INNER_TOKEN:degel-inner-service-token-2024}
+    # 严格模式，无默认值——未配置环境变量 INNER_TOKEN 直接启动失败（H1 修复，配套网关 internal-urls 拦截 /app/inner/）
+    token: ${INNER_TOKEN}
   wx:
     appid: ${WX_APPID:your-wx-appid}
     secret: ${WX_SECRET:your-wx-secret}

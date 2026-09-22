@@ -10,6 +10,7 @@ import com.degel.admin.service.ISysUserService;
 import com.degel.common.core.Constants;
 import com.degel.common.core.dto.UserInfo;
 import com.degel.common.core.exception.BusinessException;
+import com.degel.common.utils.PasswordGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -248,7 +249,8 @@ public class SysUserServiceImpl extends ServiceImpl<SysUserMapper, SysUser> impl
         }
         checkShopOwnership(user, shopId);
 
-        String newPassword = Constants.DEFAULT_PASSWORD;
+        // H2 修复：随机一次性密码替代固定 admin123（原值可通过"重置密码"登任意账号）
+        String newPassword = PasswordGenerator.generate();
         SysUser update = new SysUser();
         update.setId(userId);
         update.setPassword(passwordEncoder.encode(newPassword));

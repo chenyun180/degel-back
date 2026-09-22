@@ -20,7 +20,7 @@ public class CorsConfig {
      * 含 * 的条目走 addAllowedOriginPattern（Spring 支持 pattern + credentials）。
      * 生产必须用 DEGEL_CORS_ORIGINS 显式配置真实域名，勿依赖含通配的默认值。
      */
-    @Value("${degel.cors.origins:http://localhost:8000,http://localhost:10087,http://192.168.1.*:8000,http://192.168.1.*:10087}")
+    @Value("${degel.cors.origins}")
     private String allowedOrigins;
 
     @Bean

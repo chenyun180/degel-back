@@ -1,5 +1,7 @@
 package com.degel.app.service.impl;
 
+import com.degel.common.utils.LogMask;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.degel.app.config.AppJwtConfig;
 import com.degel.app.entity.MallUser;
@@ -81,7 +83,7 @@ public class AuthServiceImpl implements AuthService {
             user.setPhone(req.getPhone());
             user.setStatus(0);
             mallUserMapper.insert(user);
-            log.info("微信新用户注册成功, openid={}, userId={}, hasPhone={}", openid, user.getId(), req.getPhone() != null);
+            log.info("微信新用户注册成功, openid={}, userId={}, hasPhone={}", LogMask.mask(openid), user.getId(), req.getPhone() != null);
         } else {
             // Step 4: 封禁校验
             if (Integer.valueOf(1).equals(user.getStatus())) {

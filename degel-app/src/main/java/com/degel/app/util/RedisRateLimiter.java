@@ -39,12 +39,16 @@ public class RedisRateLimiter {
         }
     }
 
-    /** 客户端真实 IP：网关转发取 X-Forwarded-For 首段，直连取 remoteAddr */
+    /**
+     * 客户端真实 IP：取 X-Forwarded-For **最后一段**（低危修复：原取首段可被伪造绕过 IP 限流）。
+     * 网关在 XFF 尾部追加真实 remoteAddr（见 gateway yml x-forwarded 显式配置），与 auth
+     * LoginRateLimitFilter 保持一致。
+     */
     public static String clientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         if (StringUtils.hasText(xff)) {
-            int comma = xff.indexOf(',');
-            String ip = (comma > 0 ? xff.substring(0, comma) : xff).trim();
+            int comma = xff.lastIndexOf(',');
+            String ip = (comma >= 0 ? xff.substring(comma + 1) : xff).trim();
             if (!ip.isEmpty()) {
                 return ip;
             }

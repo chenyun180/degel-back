@@ -43,7 +43,9 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         http
                 .csrf().disable()
                 .authorizeRequests()
-                .antMatchers("/oauth/**", "/actuator/**", "/token").permitAll()
+                // "/actuator/**" 已从 permitAll 移除（2026-09-22 低危修复）：当前虽无 actuator
+                // 依赖属死配置，但留着等于延时雷——未来谁加依赖，env/heapdump 端点即刻免鉴权裸奔
+                .antMatchers("/oauth/**", "/token").permitAll()
                 .anyRequest().authenticated();
     }
 }
