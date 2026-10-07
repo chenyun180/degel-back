@@ -48,6 +48,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- 工作流引擎：仅 BPMN 流程引擎，不引 REST/UI（其接口不认 X-Shop-Id，会绕过多租户隔离） -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-spring-boot-starter-process</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

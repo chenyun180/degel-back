@@ -97,6 +97,11 @@ public class DataInitRunner implements ApplicationRunner {
         allMenus.add(shopMenu);
         allMenus.addAll(saveButtons(shopMenu.getId(), "system:shop"));
 
+        // 店铺资料变更审批（Flowable 流程 shopChange），路由 /system/shop-change
+        SysMenu shopChangeMenu = createMenu(systemDir.getId(), "资料审批", "shop-change", "./System/ShopChange", "system:shop:change", "AuditOutlined", Constants.MENU_TYPE_MENU, 5);
+        menuService.save(shopChangeMenu);
+        allMenus.add(shopChangeMenu);
+
         // 商品管理目录（平台端：审核+类目）
         // path 必须与前端 config/routes.ts 的 /platform-product 和 sql/data_init.sql 保持一致
         SysMenu productDir = createMenu(0L, "商品管理", "platform-product", "", "", "ShoppingOutlined", Constants.MENU_TYPE_DIR, 2);

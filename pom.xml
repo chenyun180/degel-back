@@ -40,6 +40,8 @@
         <security-oauth2-autoconfigure.version>2.6.8</security-oauth2-autoconfigure.version>
         <jjwt.version>0.11.5</jjwt.version>
         <aws-s3.version>2.42.2</aws-s3.version>
+        <!-- 7.x 需 JDK17+Boot3，本项目 JDK8+Boot2.6 只能用 6.8.x -->
+        <flowable.version>6.8.0</flowable.version>
         <!-- ⚠️ ES 客户端版本不要改：必须保持 Boot 2.6.13 托管的 7.15.2（不要"对齐"到服务端 7.17.29）。
              Spring Data ES 4.3.9 按 ES 7.15/7.16 编译；ES 7.17 把 XContentType 移包（org.elasticsearch.common.xcontent
              → org.elasticsearch.xcontent），客户端升 7.17 会 NoSuchFieldError 写路径全挂（2026-09-04 实测踩坑）。
@@ -108,6 +110,11 @@
                 <version>${aws-s3.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.flowable</groupId>
+                <artifactId>flowable-spring-boot-starter-process</artifactId>
+                <version>${flowable.version}</version>
             </dependency>
             <dependency>
                 <groupId>cn.hutool</groupId>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  店铺资料变更审批。启动方：ShopChangeServiceImpl.submit；办理方：ShopChangeServiceImpl.audit。
+  流程变量：changeId / shopId（启动时）；approved / auditUserId / auditRemark（办理时）。
+  审批人：candidateGroups = sys_role.role_key（admin）。改本文件后重启自动部署为新版本，在途实例仍按旧版本走完。
+-->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="http://degel.com/flow">
+
+    <process id="shopChange" name="店铺资料变更审批" isExecutable="true">
+        <startEvent id="start" name="店铺提交" flowable:initiator="applyUserId"/>
+        <sequenceFlow id="f1" sourceRef="start" targetRef="platformAudit"/>
+
+        <userTask id="platformAudit" name="平台审核" flowable:candidateGroups="admin"/>
+        <sequenceFlow id="f2" sourceRef="platformAudit" targetRef="decision"/>
+
+        <exclusiveGateway id="decision" name="审核结果"/>
+        <sequenceFlow id="fApprove" name="通过" sourceRef="decision" targetRef="applyChange">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${approved}]]></conditionExpression>
+        </sequenceFlow>
+        <sequenceFlow id="fReject" name="驳回" sourceRef="decision" targetRef="rejectChange">
+            <conditionExpression xsi:type="tFormalExpression"><![CDATA[${!approved}]]></conditionExpression>
+        </sequenceFlow>
+
+        <serviceTask id="applyChange" name="回写店铺资料" flowable:delegateExpression="${shopChangeApproveDelegate}"/>
+        <sequenceFlow id="f3" sourceRef="applyChange" targetRef="endApproved"/>
+        <endEvent id="endApproved" name="已通过"/>
+
+        <serviceTask id="rejectChange" name="标记驳回" flowable:delegateExpression="${shopChangeRejectDelegate}"/>
+        <sequenceFlow id="f4" sourceRef="rejectChange" targetRef="endRejected"/>
+        <endEvent id="endRejected" name="已驳回"/>
+    </process>
+
+    <bpmndi:BPMNDiagram id="BPMNDiagram_shopChange">
+        <bpmndi:BPMNPlane bpmnElement="shopChange" id="BPMNPlane_shopChange">
+            <bpmndi:BPMNShape bpmnElement="start" id="S_start"><omgdc:Bounds height="30" width="30" x="60" y="135"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="platformAudit" id="S_platformAudit"><omgdc:Bounds height="60" width="100" x="140" y="120"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="decision" id="S_decision"><omgdc:Bounds height="40" width="40" x="290" y="130"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="applyChange" id="S_applyChange"><omgdc:Bounds height="60" width="100" x="380" y="40"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="endApproved" id="S_endApproved"><omgdc:Bounds height="28" width="28" x="530" y="56"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="rejectChange" id="S_rejectChange"><omgdc:Bounds height="60" width="100" x="380" y="200"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="endRejected" id="S_endRejected"><omgdc:Bounds height="28" width="28" x="530" y="216"/></bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="f1" id="E_f1"><omgdi:waypoint x="90" y="150"/><omgdi:waypoint x="140" y="150"/></bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="f2" id="E_f2"><omgdi:waypoint x="240" y="150"/><omgdi:waypoint x="290" y="150"/></bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="fApprove" id="E_fApprove"><omgdi:waypoint x="310" y="130"/><omgdi:waypoint x="310" y="70"/><omgdi:waypoint x="380" y="70"/></bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="fReject" id="E_fReject"><omgdi:waypoint x="310" y="170"/><omgdi:waypoint x="310" y="230"/><omgdi:waypoint x="380" y="230"/></bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="f3" id="E_f3"><omgdi:waypoint x="480" y="70"/><omgdi:waypoint x="530" y="70"/></bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="f4" id="E_f4"><omgdi:waypoint x="480" y="230"/><omgdi:waypoint x="530" y="230"/></bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</definitions>

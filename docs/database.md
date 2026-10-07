@@ -19,7 +19,7 @@ java -cp ".:$DRIVER" Xxx.java
 
 | 库 | 归属服务 | 核心表 |
 |---|---|---|
-| degel_admin | degel-admin | sys_user, sys_role, sys_menu, sys_user_role, sys_role_menu, sys_shop |
+| degel_admin | degel-admin | sys_user, sys_role, sys_menu, sys_user_role, sys_role_menu, sys_shop, sys_shop_change；Flowable 引擎表 ACT_*/FLW_*（38 张，admin 启动自动建） |
 | degel_product | degel-product | product_spu, product_sku, product_category |
 | degel_order | degel-order | order_info, order_item, order_after_sale |
 | degel_app | degel-app | mall_user, mall_address, mall_cart, mall_payment_log |

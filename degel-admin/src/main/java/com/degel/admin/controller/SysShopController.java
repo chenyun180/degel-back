@@ -57,21 +57,6 @@ public class SysShopController {
         return R.ok(shopService.getById(shopId));
     }
 
-    @PutMapping("/mine")
-    public R<Void> updateMine(@RequestBody SysShop shop,
-                              @RequestHeader(value = "X-Shop-Id", defaultValue = "0") Long shopId) {
-        if (shopId == 0) {
-            throw new BusinessException("平台账号无店铺信息");
-        }
-        SysShop update = new SysShop();
-        update.setId(shopId);
-        update.setShopName(shop.getShopName());
-        update.setLogo(shop.getLogo());
-        update.setAnnouncement(shop.getAnnouncement());
-        update.setDescription(shop.getDescription());
-        update.setContactName(shop.getContactName());
-        update.setContactPhone(shop.getContactPhone());
-        shopService.updateById(update);
-        return R.ok();
-    }
+    // 店铺自助改资料已改为审批制：POST /shop/mine/change（ShopChangeController），
+    // 原 PUT /shop/mine 直接 updateById 的入口已移除，否则可绕过审批
 }

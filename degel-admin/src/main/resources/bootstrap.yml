@@ -14,10 +14,14 @@ spring:
         ip: 127.0.0.1
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://192.168.1.14:3306/degel_admin?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://192.168.1.14:3306/degel_admin?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
     # M3/M4 修复：凭据严格模式，无默认值——未配置环境变量直接启动失败，开发值由 degel.sh 导出
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD}
+  # Flowable 6.8 的 event-registry 传递引入 liquibase-core，Boot 会据此自动配置 Liquibase 并因找不到
+  # db/changelog/db.changelog-master.yaml 启动失败；本项目不用 Liquibase 管理业务表
+  liquibase:
+    enabled: false
   redis:
     host: 192.168.1.14
     port: 6379
@@ -35,6 +39,21 @@ mybatis-plus:
       logic-delete-field: delFlag
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+# 工作流引擎（仅 BPMN）。引擎表 ACT_*/FLW_* 建在 degel_admin 库。
+# datasource.url 必须带 nullCatalogMeansCurrent=true：MySQL 8 驱动默认跨库查元数据，同实例别的库有 ACT_ 表时
+# Flowable 会误判已建表而跳过建表
+flowable:
+  # 开发期启动时自动建/升级引擎表；生产改 false，用 flowable-engine jar 内 org/flowable/db/create/*.mysql.*.sql 手工建
+  database-schema-update: true
+  # 当前流程无定时器/异步节点，不起异步执行器线程
+  async-executor-activate: false
+  history-level: audit
+  # 身份走 sys_user/sys_role（assignee=用户 id，candidateGroups=role_key），不建 ACT_ID_* 表
+  idm:
+    enabled: false
+  # 自动部署 classpath*:/processes/*.bpmn20.xml（内容不变不重复部署）
+  check-process-definitions: true
 
 degel:
   inner:

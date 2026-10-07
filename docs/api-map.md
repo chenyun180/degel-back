@@ -11,7 +11,8 @@
 | SysUserController | /user | 用户 CRUD、`/find/{username}`(供 auth Feign 校验)、`/info`(当前用户+路由+权限)、`/resetPwd/{id}` |
 | SysRoleController | /role | 角色 CRUD、`/assignMenus`(菜单授权)、`/menuIds/{roleId}`(回显) |
 | SysMenuController | /menu | 菜单树 `/tree`、菜单 CRUD |
-| SysShopController | /shop | 店铺 CRUD(平台侧)、`/status` 启停、`/mine`(店铺侧自查自改) |
+| SysShopController | /shop | 店铺 CRUD(平台侧)、`/status` 启停、`GET /mine`(店铺侧自查；自改已改为审批制，`PUT /mine` 已移除) |
+| ShopChangeController | /shop | 店铺资料变更审批（Flowable 流程 `shopChange`）：店铺侧 `POST /mine/change` 提交、`GET /mine/change/latest`、`PUT /mine/change/{id}/withdraw`；平台侧 `GET /change/page`、`PUT /change/{id}/audit`；流程进度图 `GET /mine/change/{id}/diagram`(店铺，限本店) / `GET /change/{id}/diagram`(平台) |
 
 ## degel-auth（/auth/**）
 
@@ -61,6 +62,17 @@
 0 待付款 --支付--> 1 待发货 --发货(/order/deliver)--> 2 待收货 --确认收货--> 3 已完成
 0 待付款 --取消--> 4 已取消
 ```
+
+## 店铺资料变更审批流（sys_shop_change.status，Flowable 流程 shopChange）
+
+```
+店铺提交 → 0 待审核（userTask 平台审核，candidateGroups=admin）
+  ├─ 通过 → ShopChangeApproveDelegate 回写 sys_shop → 1 已通过
+  ├─ 驳回（意见必填）→ ShopChangeRejectDelegate → 2 已驳回
+  └─ 店铺撤回 → deleteProcessInstance → 3 已撤回
+```
+
+同一店铺同时只允许一条待审核；资料无变化拒绝提交。流程定义 `degel-admin/src/main/resources/processes/shop-change.bpmn20.xml`。
 
 ## SPU 审核流（product_spu.audit_status）
 
